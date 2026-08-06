@@ -1,0 +1,81 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+import { AnnouncementBar } from "@/components/layout/announcement-bar";
+import { Header } from "@/components/layout/header";
+import { CheckoutHeader } from "@/components/layout/checkout-header";
+import { MobileNav } from "@/components/layout/mobile-nav";
+import { Footer } from "@/components/layout/footer";
+import { CartDrawer } from "@/components/cart/cart-drawer";
+import { SearchOverlay } from "@/components/search/search-overlay";
+
+/** Routes that trade the full navigation for a distraction-free frame. */
+const MINIMAL_ROUTES = ["/checkout"];
+
+/**
+ * Client boundary only so the frame can react to the route. `children` is
+ * still rendered on the server and passed straight through, so no page code
+ * is pulled into the client bundle by this.
+ */
+export function SiteChrome({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const minimal = MINIMAL_ROUTES.some((route) => pathname.startsWith(route));
+
+  return (
+    <>
+      <a
+        href="#main"
+        className="sr-only-focusable fixed left-4 top-4 z-100 bg-primary px-5 py-3 eyebrow-sm text-primary-foreground"
+      >
+        Skip to content
+      </a>
+
+      {minimal ? (
+        <CheckoutHeader />
+      ) : (
+        <>
+          <AnnouncementBar />
+          <Header />
+        </>
+      )}
+
+      <main id="main" className="min-h-[60vh] flex-1">
+        {children}
+      </main>
+
+      {minimal ? <CheckoutFooter /> : <Footer />}
+
+      <MobileNav />
+      <CartDrawer />
+      <SearchOverlay />
+    </>
+  );
+}
+
+function CheckoutFooter() {
+  return (
+    <footer className="border-t border-hairline">
+      <div className="container-shell flex flex-col items-center justify-between gap-4 py-8 sm:flex-row">
+        <p className="eyebrow-sm text-muted-foreground">© {new Date().getFullYear()} Zylo</p>
+        <ul className="flex flex-wrap items-center gap-x-7 gap-y-2">
+          {[
+            { href: "/legal/privacy", label: "Privacy" },
+            { href: "/legal/terms", label: "Terms" },
+            { href: "/help/contact", label: "Need help?" },
+          ].map((link) => (
+            <li key={link.href}>
+              <Link
+                href={link.href}
+                className="eyebrow-sm text-muted-foreground transition-colors duration-400 hover:text-foreground"
+              >
+                {link.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </footer>
+  );
+}
