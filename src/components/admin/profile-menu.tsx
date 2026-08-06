@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronDown, ExternalLink, LogOut, Settings, User } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { adminSignOut } from "@/app/actions/admin/auth";
 
 /**
  * Operator menu.
@@ -122,21 +123,20 @@ export function AdminProfileMenu({ operator }: { operator: OperatorSummary }) {
           </div>
 
           <div className="border-t border-admin-line p-1">
-            {/* Sign-out is intentionally inert until the login flow is linked.
-                A button that appears to end a session but does not would be
-                worse than one that says so. */}
-            <button
-              type="button"
-              role="menuitem"
-              disabled
-              className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-[0.8125rem] font-medium text-admin-faint opacity-60"
-            >
-              <LogOut className="size-4" strokeWidth={1.7} />
-              Sign out
-              <span className="ml-auto text-[0.625rem] uppercase tracking-wider">
-                Soon
-              </span>
-            </button>
+            {/* A form, not an onClick: `adminSignOut` ends in a redirect, and
+                React's form integration follows it. It also keeps working
+                without JavaScript, which for the control that ends a session
+                on a shared machine is worth having. */}
+            <form action={adminSignOut}>
+              <button
+                type="submit"
+                role="menuitem"
+                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-[0.8125rem] font-medium text-admin-muted transition-colors duration-200 hover:bg-admin-hover hover:text-admin-fg"
+              >
+                <LogOut className="size-4" strokeWidth={1.7} />
+                Sign out
+              </button>
+            </form>
           </div>
         </div>
       )}
