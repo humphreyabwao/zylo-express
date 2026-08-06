@@ -369,9 +369,19 @@ async function seedStorage() {
   let paths: string[];
   try {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+
+    // The manifest is `{ generatedAt, files }`. Taking Object.values().flat()
+    // swept `generatedAt` in beside the paths — it is a string too — and the
+    // run then tried to upload a file named after a timestamp. Read the `files`
+    // key when it is there, and only fall back to flattening for the older
+    // shape.
     paths = Array.isArray(manifest)
       ? manifest
-      : Object.values(manifest).flat().filter((v): v is string => typeof v === "string");
+      : Array.isArray(manifest?.files)
+        ? manifest.files
+        : Object.values(manifest).flat();
+
+    paths = paths.filter((v): v is string => typeof v === "string");
   } catch {
     console.log("  media manifest unreadable — skipping upload");
     return;
