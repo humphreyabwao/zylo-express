@@ -1,5 +1,7 @@
 import "server-only";
 
+import { resolveSiteUrl } from "./site-url";
+
 /**
  * Validated server environment.
  *
@@ -49,9 +51,61 @@ export const env = {
     return optional("UPSTASH_REDIS_REST_TOKEN");
   },
   get siteUrl() {
-    return (process.env.SITE_URL || "http://localhost:3000").replace(/\/$/, "");
+    return resolveSiteUrl();
+  },
+
+  /* ------------------------------------------------------------ payments */
+
+  /**
+   * Paystack secret key (`sk_test_…` / `sk_live_…`).
+   *
+   * The matching *public* key is deliberately absent from this file and from
+   * the app. It only exists to authenticate Paystack's browser-side Inline
+   * popup, and we do not use Inline: transactions are initialised server-side
+   * and the customer is redirected to Paystack's hosted page. That keeps card
+   * entry off this origin entirely — no PAN, no PCI scope, no key to inline.
+   */
+  get paystackSecretKey() {
+    return required("PAYSTACK_SECRET_KEY");
+  },
+  /**
+   * Currency Paystack settles in — the one your Paystack account is registered
+   * for. M-Pesa exists only on Kenyan accounts, so KES is the default.
+   */
+  get paystackCurrency() {
+    return (optional("PAYSTACK_CURRENCY") ?? "KES").toUpperCase();
+  },
+
+  get paypalClientId() {
+    return required("PAYPAL_CLIENT_ID");
+  },
+  get paypalClientSecret() {
+    return required("PAYPAL_CLIENT_SECRET");
+  },
+  /** Set once the account is live; anything else stays on sandbox. */
+  get paypalApiBase() {
+    return optional("PAYPAL_ENVIRONMENT") === "live"
+      ? "https://api-m.paypal.com"
+      : "https://api-m.sandbox.paypal.com";
+  },
+  /**
+   * Webhook id from the PayPal dashboard. Without it a webhook payload cannot
+   * be verified, so the handler rejects everything — see payments/paypal.ts.
+   */
+  get paypalWebhookId() {
+    return optional("PAYPAL_WEBHOOK_ID");
   },
 } as const;
+
+export function isPaystackConfigured(): boolean {
+  return Boolean(process.env.PAYSTACK_SECRET_KEY);
+}
+
+export function isPaypalConfigured(): boolean {
+  return Boolean(
+    process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET
+  );
+}
 
 /**
  * Whether Supabase is wired up. The catalogue falls back to the local seed

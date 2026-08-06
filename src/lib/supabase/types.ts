@@ -31,6 +31,16 @@ export type OrderStatusDb =
   | "cancelled"
   | "refunded";
 
+export type PaymentProviderDb = "paystack" | "paypal";
+export type PaymentMethodDb = "card" | "mpesa" | "paypal";
+export type PaymentStatusDb =
+  | "pending"
+  | "processing"
+  | "succeeded"
+  | "failed"
+  | "abandoned"
+  | "refunded";
+
 export type CountryRow = {
   code: string;
   name: string;
@@ -180,6 +190,8 @@ export type OrderRow = {
   billing_address: Record<string, unknown> | null;
   shipping_method: ShippingSpeedDb;
   tracking_url: string | null;
+  /** Free text kept with the order — the checkout writes the gift message here. */
+  notes: string | null;
   placed_at: string;
 }
 
@@ -197,6 +209,41 @@ export type OrderItemRow = {
   unit_price: number;
   quantity: number;
   line_total: number;
+}
+
+export type PaymentRow = {
+  id: string;
+  order_id: string;
+  provider: PaymentProviderDb;
+  method: PaymentMethodDb;
+  status: PaymentStatusDb;
+  /** Our idempotency key, sent to the provider as their `reference`. */
+  reference: string;
+  provider_reference: string | null;
+  /** Store books: minor units of `currency`, equal to the order total. */
+  amount: number;
+  currency: CurrencyDb;
+  /** Presentment: what the provider was actually asked to move. */
+  charge_amount: number;
+  charge_currency: string;
+  exchange_rate: number;
+  authorization_url: string | null;
+  phone: string | null;
+  failure_reason: string | null;
+  paid_at: string | null;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type PaymentEventRow = {
+  id: string;
+  provider: PaymentProviderDb;
+  event_id: string;
+  event_type: string;
+  payment_id: string | null;
+  payload: Record<string, unknown>;
+  received_at: string;
 }
 
 export type ArticleRow = {
@@ -235,6 +282,18 @@ export type SiteSettingRow = {
   value: unknown;
   description: string | null;
 }
+
+/** Shape returned by the `inventory_summary` RPC. */
+export type InventorySummaryRpcResult = {
+  variant_count: number;
+  unit_count: number;
+  out_of_stock: number;
+  low_stock: number;
+  /** Stock at asking price, in minor units. Not cost — the schema has none. */
+  retail_value: number;
+  /** Out-of-stock variants belonging to published products only. */
+  live_out_of_stock: number;
+};
 
 /** Shape returned by the `catalog_facets` RPC. */
 export type FacetsRpcResult = {
@@ -287,6 +346,8 @@ export type Database = {
       addresses: Table<AddressRow>;
       orders: Table<OrderRow>;
       order_items: Table<OrderItemRow>;
+      payments: Table<PaymentRow>;
+      payment_events: Table<PaymentEventRow>;
       wishlist_items: Table<{
         user_id: string;
         product_id: string;
@@ -325,6 +386,41 @@ export type Database = {
         Args: { p_lines: { variant_id: string; quantity: number }[] };
         Returns: boolean;
       };
+      release_inventory: {
+        Args: { p_lines: { variant_id: string; quantity: number }[] };
+        Returns: undefined;
+      };
+      adjust_variant_stock: {
+        Args: { p_variant_id: string; p_delta: number };
+        /** The resulting quantity, clamped at zero. */
+        Returns: number;
+      };
+      inventory_summary: {
+        Args: { p_low_threshold?: number };
+        Returns: InventorySummaryRpcResult;
+      };
+      settle_payment: {
+        Args: {
+          p_reference: string;
+          p_provider_reference: string | null;
+          p_charge_amount: number | null;
+        };
+        /** False when the payment was already settled — a duplicate webhook. */
+        Returns: boolean;
+      };
+      fail_payment: {
+        Args: {
+          p_reference: string;
+          p_reason: string | null;
+          p_status?: PaymentStatusDb;
+        };
+        Returns: boolean;
+      };
+      expire_pending_payments: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      increment_promotion_usage: { Args: { p_code: string }; Returns: undefined };
       generate_order_reference: { Args: Record<string, never>; Returns: string };
       is_admin: { Args: Record<string, never>; Returns: boolean };
     };

@@ -1436,6 +1436,29 @@ function buildOptions(seed: Seed): ProductOption[] {
   return options;
 }
 
+/**
+ * SKU prefix.
+ *
+ * Three letters of the slug is not enough to identify a product: both
+ * `aurelia-top-handle` and `auriga-headphones` reduce to AUR, which silently
+ * produced three duplicate SKUs. Nothing caught it here — the collision only
+ * surfaced when the seed script upserted `product_variants` on `sku` and
+ * Postgres rejected the entire batch with "ON CONFLICT DO UPDATE command cannot
+ * affect row a second time", which names neither the table nor the value.
+ *
+ * Appending a hash of the *full* slug keeps the prefix short and readable while
+ * making it depend on the whole name. Stable across re-seeds because it derives
+ * from the slug, which is itself the natural key.
+ */
+function skuPrefix(slug: string) {
+  const letters = slug.slice(0, 3).toUpperCase();
+  const discriminator = (hash(slug) % 36 ** 3)
+    .toString(36)
+    .toUpperCase()
+    .padStart(3, "0");
+  return `ZY-${letters}${discriminator}`;
+}
+
 function buildVariants(seed: Seed, images: ProductImage[]): ProductVariant[] {
   const sizes = seed.sizes ?? [null];
   const sizeName = seed.sizeLabel ?? "Size";
@@ -1456,9 +1479,10 @@ function buildVariants(seed: Seed, images: ProductImage[]): ProductVariant[] {
 
       variants.push({
         id,
-        sku: `ZY-${seed.slug.slice(0, 3).toUpperCase()}-${String(
-          colorIndex + 1
-        ).padStart(2, "0")}${String(sizeIndex + 1).padStart(2, "0")}`,
+        sku: `${skuPrefix(seed.slug)}-${String(colorIndex + 1).padStart(
+          2,
+          "0"
+        )}${String(sizeIndex + 1).padStart(2, "0")}`,
         title: size
           ? `${SWATCH[colorKey][0]} / ${size}`
           : SWATCH[colorKey][0],

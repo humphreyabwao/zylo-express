@@ -40,6 +40,12 @@ export const RateLimits = {
   auth: { limit: 6, windowSeconds: 300 },
   /** Long-lived streams; the cost is the connection, not the request. */
   stream: { limit: 12, windowSeconds: 60 },
+  /**
+   * Payment status polling. A live M-Pesa prompt is checked every 3 seconds,
+   * so the honest ceiling is 20/minute — this leaves room for a retry and a
+   * second tab without letting anyone grind through payment references.
+   */
+  poll: { limit: 60, windowSeconds: 60 },
 } as const satisfies Record<string, RateLimitOptions>;
 
 /**

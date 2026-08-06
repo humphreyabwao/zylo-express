@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { Check, Lock, ShoppingBag } from "lucide-react";
@@ -11,8 +11,17 @@ import { toast } from "sonner";
 import type { ShippingSpeed } from "@/lib/types";
 import { SHIPPING_METHODS } from "@/lib/pricing";
 import { useCartStore } from "@/store/cart-store";
-import { checkoutSchema, type CheckoutValues } from "@/lib/validation";
+import {
+  checkoutSchema,
+  type CheckoutValues,
+  type PaymentMethodValue,
+} from "@/lib/validation";
 import { cn, formatPrice } from "@/lib/utils";
+import {
+  cancelCheckout,
+  pollCheckoutStatus,
+  startCheckout,
+} from "@/app/actions/checkout";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -30,6 +39,11 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OrderSummary } from "@/components/cart/order-summary";
 import { AddressFields } from "@/components/checkout/address-fields";
+import {
+  MpesaPhoneField,
+  MpesaPrompt,
+  PaymentMethods,
+} from "@/components/checkout/payment-methods";
 
 const STEPS = [
   { id: "contact", label: "Contact" },
@@ -43,13 +57,7 @@ type StepId = (typeof STEPS)[number]["id"];
 const STEP_FIELDS: Record<StepId, (keyof CheckoutValues | string)[]> = {
   contact: ["email", "marketingOptIn"],
   delivery: ["shippingAddress", "shippingMethodId", "giftMessage"],
-  payment: [
-    "cardholder",
-    "cardNumber",
-    "expiry",
-    "cvc",
-    "billingSameAsShipping",
-  ],
+  payment: ["paymentMethod", "mpesaPhone", "billingSameAsShipping"],
 };
 
 const EMPTY_ADDRESS = {
@@ -65,8 +73,38 @@ const EMPTY_ADDRESS = {
   phone: "",
 };
 
-export function CheckoutFlow() {
+/**
+ * How long to wait on an M-Pesa prompt before giving up on it.
+ *
+ * Safaricom expires an unanswered STK push at around 60 seconds, but the
+ * customer still has to find their handset, so the poll runs well past that.
+ * Reaching this limit stops the polling, not the payment — the webhook still
+ * settles a late authorisation and the order appears in their history.
+ */
+const MPESA_TIMEOUT_MS = 180_000;
+const MPESA_POLL_MS = 3_000;
+
+/** What the return leg of a redirect flow puts on the URL. */
+const PAYMENT_BANNERS: Record<string, string> = {
+  failed: "That payment was not completed. You have not been charged.",
+  cancelled: "Payment cancelled. Your bag is untouched.",
+  "missing-reference": "We lost track of that payment. Please try again.",
+};
+
+interface MpesaState {
+  reference: string;
+  phone: string;
+  displayText: string;
+  startedAt: number;
+}
+
+export function CheckoutFlow({
+  availableMethods,
+}: {
+  availableMethods: PaymentMethodValue[];
+}) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const lines = useCartStore((s) => s.lines);
   const hydrated = useCartStore((s) => s.hydrated);
   const promotionCode = useCartStore((s) => s.promotionCode);
@@ -76,6 +114,11 @@ export function CheckoutFlow() {
 
   const [step, setStep] = React.useState<StepId>("contact");
   const [completed, setCompleted] = React.useState<StepId[]>([]);
+  const [mpesa, setMpesa] = React.useState<MpesaState | null>(null);
+  const [elapsed, setElapsed] = React.useState(0);
+  const [cancelling, setCancelling] = React.useState(false);
+  /** Held across the redirect hand-off so the button never re-enables. */
+  const [leaving, setLeaving] = React.useState(false);
 
   const form = useForm<CheckoutValues>({
     resolver: zodResolver(checkoutSchema),
@@ -86,16 +129,15 @@ export function CheckoutFlow() {
       shippingAddress: EMPTY_ADDRESS,
       shippingMethodId: "standard",
       giftMessage: "",
-      cardholder: "",
-      cardNumber: "",
-      expiry: "",
-      cvc: "",
+      paymentMethod: availableMethods[0] ?? "card",
+      mpesaPhone: "",
       billingSameAsShipping: true,
     },
   });
 
   const shippingMethodId = form.watch("shippingMethodId");
   const billingSame = form.watch("billingSameAsShipping");
+  const paymentMethod = form.watch("paymentMethod");
 
   // Keep the store in step with the form so the summary reprices live.
   React.useEffect(() => {
@@ -108,6 +150,16 @@ export function CheckoutFlow() {
     else if (!form.getValues("billingAddress"))
       form.setValue("billingAddress", EMPTY_ADDRESS);
   }, [billingSame, form]);
+
+  // Surface the outcome a redirect flow came back with.
+  const banner = searchParams.get("payment");
+  React.useEffect(() => {
+    if (banner && PAYMENT_BANNERS[banner]) {
+      toast(PAYMENT_BANNERS[banner]);
+      // Drop the parameter so a refresh does not re-announce it.
+      router.replace("/checkout", { scroll: false });
+    }
+  }, [banner, router]);
 
   const totals = getTotals();
 
@@ -126,33 +178,126 @@ export function CheckoutFlow() {
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const onSubmit = async (values: CheckoutValues) => {
-    // The Supabase Edge Function re-prices the basket and creates the payment
-    // intent; this stand-in produces the same reference shape it will return.
-    await new Promise((resolve) => setTimeout(resolve, 1400));
-
-    const reference = `ZY-${Date.now().toString(36).toUpperCase().slice(-6)}`;
-
-    try {
-      sessionStorage.setItem(
-        "zylo.lastOrder",
-        JSON.stringify({
-          reference,
-          email: values.email,
-          lines,
-          totals,
-          shippingAddress: values.shippingAddress,
-          shippingMethodId: values.shippingMethodId,
-          placedAt: new Date().toISOString(),
-        })
+  const finish = React.useCallback(
+    (orderReference: string | null) => {
+      clear();
+      toast("Payment received", {
+        description: orderReference
+          ? `Reference ${orderReference}`
+          : "Your order is confirmed.",
+      });
+      router.push(
+        `/checkout/confirmation${orderReference ? `?ref=${orderReference}` : ""}`
       );
-    } catch {
-      // A blocked storage quota must not prevent the order confirmation.
+    },
+    [clear, router]
+  );
+
+  /**
+   * Poll while an STK prompt is live.
+   *
+   * The webhook is what actually settles the order; this only decides how soon
+   * the customer sees it. Both call the same reconciliation on the server, so
+   * a poll that wins the race and a poll that loses it produce the same state.
+   */
+  React.useEffect(() => {
+    if (!mpesa) return;
+
+    let cancelled = false;
+
+    const tick = window.setInterval(() => {
+      setElapsed(Math.floor((Date.now() - mpesa.startedAt) / 1000));
+    }, 1000);
+
+    const poll = window.setInterval(async () => {
+      if (Date.now() - mpesa.startedAt > MPESA_TIMEOUT_MS) {
+        if (cancelled) return;
+        setMpesa(null);
+        toast("We did not hear back from M-Pesa", {
+          description:
+            "If you completed the prompt, the order will appear in your account shortly.",
+        });
+        return;
+      }
+
+      const status = await pollCheckoutStatus({ reference: mpesa.reference });
+      if (cancelled) return;
+
+      if (status.state === "paid") {
+        setMpesa(null);
+        finish(status.orderReference);
+      } else if (status.state === "failed") {
+        setMpesa(null);
+        toast("Payment not completed", { description: status.message });
+      }
+    }, MPESA_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(tick);
+      window.clearInterval(poll);
+    };
+  }, [mpesa, finish]);
+
+  const onSubmit = async (values: CheckoutValues) => {
+    const result = await startCheckout({
+      email: values.email,
+      marketingOptIn: values.marketingOptIn,
+      shippingAddress: values.shippingAddress,
+      billingAddress: values.billingSameAsShipping
+        ? null
+        : values.billingAddress,
+      billingSameAsShipping: values.billingSameAsShipping,
+      shippingMethodId: values.shippingMethodId,
+      giftMessage: values.giftMessage,
+      promotionCode,
+      paymentMethod: values.paymentMethod,
+      mpesaPhone: values.mpesaPhone,
+      // Ids and quantities only. Every price is re-read from the catalogue on
+      // the server; anything sent from here would be ignored.
+      lines: lines.map((line) => ({
+        variantId: line.variantId,
+        quantity: line.quantity,
+      })),
+    });
+
+    if (result.kind === "error") {
+      for (const [field, message] of Object.entries(result.fieldErrors ?? {})) {
+        form.setError(field as keyof CheckoutValues, { message });
+      }
+      toast("Could not take payment", { description: result.message });
+      return;
     }
 
-    clear();
-    toast("Order placed", { description: `Reference ${reference}` });
-    router.push(`/checkout/confirmation?ref=${reference}`);
+    if (result.kind === "redirect") {
+      // The bag is left alone on purpose. Nothing has been paid yet, and a
+      // customer who abandons the provider's page must come back to a full
+      // cart — the confirmation page clears it once money has actually moved.
+      setLeaving(true);
+      window.location.assign(result.url);
+      return;
+    }
+
+    setElapsed(0);
+    setMpesa({
+      reference: result.reference,
+      phone: result.phone,
+      displayText: result.displayText,
+      startedAt: Date.now(),
+    });
+  };
+
+  const abandonMpesa = async () => {
+    if (!mpesa) return;
+
+    setCancelling(true);
+    try {
+      await cancelCheckout({ reference: mpesa.reference });
+    } finally {
+      setCancelling(false);
+      setMpesa(null);
+      toast("Payment cancelled");
+    }
   };
 
   if (!hydrated) {
@@ -186,8 +331,20 @@ export function CheckoutFlow() {
     );
   }
 
+  const busy = form.formState.isSubmitting || leaving || Boolean(mpesa);
+
   return (
     <Form {...form}>
+      {mpesa && (
+        <MpesaPrompt
+          phone={mpesa.phone}
+          displayText={mpesa.displayText}
+          elapsedSeconds={elapsed}
+          onCancel={abandonMpesa}
+          cancelling={cancelling}
+        />
+      )}
+
       <form
         onSubmit={form.handleSubmit(onSubmit)}
         noValidate
@@ -392,89 +549,19 @@ export function CheckoutFlow() {
           >
             <p className="mb-8 flex items-center gap-2.5 text-sm font-light text-muted-foreground">
               <Lock className="size-3.5 shrink-0" strokeWidth={1.25} />
-              Encrypted in transit. Card details are never stored by the house.
+              Card details are entered on our payment provider&rsquo;s own
+              secure page. They never reach this site.
             </p>
 
-            <div className="grid gap-6 sm:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="cardholder"
-                render={({ field }) => (
-                  <FormItem className="sm:col-span-2">
-                    <FormLabel>Name on card</FormLabel>
-                    <FormControl>
-                      <Input {...field} autoComplete="cc-name" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <PaymentMethods
+              control={form.control}
+              available={availableMethods}
+              selected={paymentMethod}
+            />
 
-              <FormField
-                control={form.control}
-                name="cardNumber"
-                render={({ field }) => (
-                  <FormItem className="sm:col-span-2">
-                    <FormLabel>Card number</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        inputMode="numeric"
-                        autoComplete="cc-number"
-                        placeholder="0000 0000 0000 0000"
-                        onChange={(event) =>
-                          field.onChange(formatCardNumber(event.target.value))
-                        }
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="expiry"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Expiry</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        inputMode="numeric"
-                        autoComplete="cc-exp"
-                        placeholder="MM/YY"
-                        maxLength={5}
-                        onChange={(event) =>
-                          field.onChange(formatExpiry(event.target.value))
-                        }
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="cvc"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Security code</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        inputMode="numeric"
-                        autoComplete="cc-csc"
-                        maxLength={4}
-                        placeholder="123"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+            {paymentMethod === "mpesa" && (
+              <MpesaPhoneField control={form.control} />
+            )}
 
             <Separator className="my-10" />
 
@@ -519,10 +606,10 @@ export function CheckoutFlow() {
               size="lg"
               block
               className="mt-10"
-              disabled={form.formState.isSubmitting}
+              disabled={busy || availableMethods.length === 0}
             >
-              {form.formState.isSubmitting
-                ? "Placing order…"
+              {busy
+                ? "Contacting your bank…"
                 : `Pay ${formatPrice(totals.total, { currency: totals.currency })}`}
             </Button>
 
@@ -662,17 +749,4 @@ function StepPanel({
       {open && <div className="mt-8">{children}</div>}
     </section>
   );
-}
-
-/* --------------------------------------------------------------- masking */
-
-function formatCardNumber(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 19);
-  return digits.replace(/(.{4})/g, "$1 ").trim();
-}
-
-function formatExpiry(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 4);
-  if (digits.length <= 2) return digits;
-  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
 }
