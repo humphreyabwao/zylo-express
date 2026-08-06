@@ -99,8 +99,14 @@ export const config = {
   /**
    * Skip static assets and image optimisation — running a session refresh for
    * every font and photograph would triple the auth traffic for no benefit.
+   *
+   * `api/payments` is skipped for a different reason. Those routes are called
+   * by Paystack and PayPal, never by a browser, and carry no session cookie —
+   * so the `getUser()` above is a guaranteed-useless round trip to Supabase
+   * sitting inside a provider's webhook timeout. They authenticate themselves
+   * by signature; see the handlers.
    */
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|media/|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|woff|woff2)$).*)",
+    "/((?!_next/static|_next/image|api/payments|favicon.ico|media/|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|woff|woff2)$).*)",
   ],
 };

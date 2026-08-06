@@ -1,5 +1,15 @@
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import {
+  ArrowUpRight,
+  BadgePercent,
+  Boxes,
+  CircleAlert,
+  Inbox,
+  PackageCheck,
+  ReceiptText,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 
 import { formatPrice } from "@/lib/utils";
 import { requireAdmin } from "@/lib/admin/guard";
@@ -21,6 +31,7 @@ import {
   Th,
   Tr,
 } from "@/components/admin/primitives";
+import { RealtimeRefresh } from "@/components/admin/realtime-refresh";
 import { ORDER_STATUS_TONE } from "@/lib/admin/status";
 
 export const metadata = { title: "Dashboard" };
@@ -41,13 +52,17 @@ export default async function AdminDashboardPage() {
       <PageHeader
         title={`Good day, ${firstName}`}
         description="Everything trading right now, in one place."
-      />
+      >
+        <RealtimeRefresh channel="products" label="the shop" />
+      </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Revenue"
           value={formatPrice(metrics.revenue)}
           hint="Excludes cancelled and refunded orders"
+          icon={TrendingUp}
+          href="/admin/orders"
         />
         <StatCard
           label="Orders"
@@ -57,44 +72,63 @@ export default async function AdminDashboardPage() {
               ? "No orders placed yet"
               : "All time, every status"
           }
+          icon={ReceiptText}
+          href="/admin/orders"
         />
         <StatCard
           label="Customers"
           value={String(metrics.customerCount)}
           hint="Registered accounts"
+          icon={Users}
+          href="/admin/customers"
         />
         <StatCard
           label="Published"
           value={`${metrics.publishedCount} / ${metrics.productCount}`}
           hint="Live products against the full catalogue"
+          icon={PackageCheck}
+          href="/admin/products?status=active"
         />
       </div>
 
       {/* Things wanting attention are separated from the headline figures:
-          these are prompts to act, not measures of the business. */}
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          these are prompts to act, not measures of the business — so each one
+          links to the screen where the acting happens. */}
+      <h2 className="mb-3 mt-8 text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-admin-faint">
+        Needs attention
+      </h2>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Out of stock"
           value={String(metrics.outOfStockCount)}
           tone={metrics.outOfStockCount > 0 ? "critical" : "neutral"}
           hint="Variants unavailable to buy"
+          icon={CircleAlert}
+          href="/admin/inventory"
         />
         <StatCard
           label="Low stock"
           value={String(metrics.lowStockCount)}
           tone={metrics.lowStockCount > 0 ? "warning" : "neutral"}
           hint={`At or below ${LOW_STOCK_THRESHOLD} units`}
+          icon={Boxes}
+          href="/admin/inventory"
         />
         <StatCard
           label="Open enquiries"
           value={String(metrics.openMessageCount)}
           tone={metrics.openMessageCount > 0 ? "warning" : "neutral"}
           hint="Unresolved contact messages"
+          icon={Inbox}
+          href="/admin/messages"
         />
         <StatCard
           label="Active promotions"
           value={String(metrics.activePromotionCount)}
           hint="Codes currently redeemable"
+          icon={BadgePercent}
+          href="/admin/promotions"
         />
       </div>
 

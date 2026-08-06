@@ -123,9 +123,9 @@ create policy "addresses owned" on public.addresses
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- ================================================================ orders ==
--- Read-only to the customer. Orders are created server-side through the
--- Edge Function, which validates prices against the catalogue — a client that
--- could INSERT here could name its own total.
+-- Read-only to the customer. Orders are created server-side in
+-- `src/lib/orders.ts`, which re-prices every line against the catalogue — a
+-- client that could INSERT here could name its own total.
 
 create policy "orders readable by owner" on public.orders
   for select using (auth.uid() = user_id or public.is_admin());

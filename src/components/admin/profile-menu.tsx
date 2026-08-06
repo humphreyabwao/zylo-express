@@ -66,9 +66,9 @@ export function AdminProfileMenu({ operator }: { operator: OperatorSummary }) {
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex items-center gap-2.5 rounded-sm py-1 pl-1 pr-2 transition-colors duration-300 hover:bg-admin-hover"
+        className="flex items-center gap-2.5 rounded-md py-1 pl-1 pr-2 transition-colors duration-300 hover:bg-admin-hover"
       >
-        <span className="grid size-8 shrink-0 place-items-center rounded-sm bg-admin-active text-[0.6875rem] font-bold text-admin-fg">
+        <span className="grid size-8 shrink-0 place-items-center rounded-md bg-admin-active text-[0.6875rem] font-bold text-admin-fg">
           {initials}
         </span>
 
@@ -93,7 +93,7 @@ export function AdminProfileMenu({ operator }: { operator: OperatorSummary }) {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-64 origin-top-right border border-admin-line bg-admin-panel shadow-lg shadow-black/5 animate-in fade-in-0 zoom-in-95 duration-200"
+          className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-64 origin-top-right overflow-hidden rounded-lg border border-admin-line bg-admin-panel shadow-xl shadow-black/10 animate-in fade-in-0 zoom-in-95 duration-200"
         >
           <div className="border-b border-admin-line px-4 py-3">
             <p className="truncate text-[0.8125rem] font-semibold text-admin-fg">
@@ -104,7 +104,7 @@ export function AdminProfileMenu({ operator }: { operator: OperatorSummary }) {
             </p>
 
             {operator.isPreview && (
-              <p className="mt-2 border border-champagne/40 bg-champagne/10 px-2 py-1 text-[0.6875rem] font-medium leading-snug text-admin-muted">
+              <p className="mt-2 rounded border border-champagne/40 bg-champagne/10 px-2 py-1 text-[0.6875rem] font-medium leading-snug text-admin-muted">
                 Preview identity — not a real account.
               </p>
             )}
@@ -129,7 +129,7 @@ export function AdminProfileMenu({ operator }: { operator: OperatorSummary }) {
               type="button"
               role="menuitem"
               disabled
-              className="flex w-full items-center gap-2.5 rounded-sm px-3 py-2 text-[0.8125rem] font-medium text-admin-faint opacity-60"
+              className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-[0.8125rem] font-medium text-admin-faint opacity-60"
             >
               <LogOut className="size-4" strokeWidth={1.7} />
               Sign out
@@ -160,7 +160,7 @@ function MenuLink({
       href={href}
       role="menuitem"
       {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-      className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-[0.8125rem] font-medium text-admin-muted transition-colors duration-200 hover:bg-admin-hover hover:text-admin-fg"
+      className="flex items-center gap-2.5 rounded-md px-3 py-2 text-[0.8125rem] font-medium text-admin-muted transition-colors duration-200 hover:bg-admin-hover hover:text-admin-fg"
     >
       <Icon className="size-4" strokeWidth={1.7} />
       {label}

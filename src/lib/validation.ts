@@ -120,45 +120,101 @@ export const deliveryStepSchema = z.object({
 });
 export type DeliveryStepValues = z.infer<typeof deliveryStepSchema>;
 
+export const PAYMENT_METHODS = ["card", "mpesa", "paypal"] as const;
+export type PaymentMethodValue = (typeof PAYMENT_METHODS)[number];
+
 /**
- * Card fields are validated for shape only. In production the inputs are
- * replaced by the payment provider's hosted fields and no PAN ever touches
- * this origin — the schema stays so the demo flow behaves realistically.
+ * Kenyan mobile number, in any of the four forms people actually type.
+ *
+ * Must stay in step with `normaliseKenyanMsisdn` in `@/lib/payments/paystack`,
+ * which is what Paystack is actually handed. This copy exists because that
+ * module is server-only and the checkout needs to reject a typo before it
+ * costs a round trip — it is a convenience check, not the authority.
  */
-export const paymentStepSchema = z.object({
-  cardholder: requiredString("Cardholder name", 80),
-  cardNumber: z
-    .string()
-    .trim()
-    .transform((v) => v.replace(/\s+/g, ""))
-    .pipe(
-      z
-        .string()
-        .regex(/^\d{13,19}$/, "Enter a valid card number")
-        .refine(luhn, "Enter a valid card number")
-    ),
-  expiry: z
-    .string()
-    .trim()
-    .regex(/^(0[1-9]|1[0-2])\s?\/\s?\d{2}$/, "Use MM/YY")
-    .refine(notExpired, "This card has expired"),
-  cvc: z
-    .string()
-    .trim()
-    .regex(/^\d{3,4}$/, "Enter the security code"),
+const KENYAN_MOBILE = /^(?:\+?254|0)?[17]\d{8}$/;
+
+/**
+ * No card fields.
+ *
+ * Cards are collected on Paystack's hosted page, which this app redirects to,
+ * so no PAN, expiry or CVC ever reaches this origin — there is nothing here to
+ * validate and nothing to accidentally log. What the customer chooses is the
+ * *method*; everything sensitive belongs to the provider.
+ */
+const paymentStepFields = z.object({
+  paymentMethod: z.enum(PAYMENT_METHODS, {
+    errorMap: () => ({ message: "Choose how you would like to pay" }),
+  }),
+  mpesaPhone: z.string().trim().max(24).optional().or(z.literal("")),
   billingSameAsShipping: z.boolean(),
   billingAddress: addressSchema.optional(),
 });
-export type PaymentStepValues = z.infer<typeof paymentStepSchema>;
 
-export const checkoutSchema = contactStepSchema
-  .merge(deliveryStepSchema)
-  .merge(paymentStepSchema)
-  .refine(
-    (values) => values.billingSameAsShipping || !!values.billingAddress,
-    { message: "A billing address is required", path: ["billingAddress"] }
-  );
-export type CheckoutValues = z.infer<typeof checkoutSchema>;
+/**
+ * The two cross-field rules, applied identically to the step schema and the
+ * whole-checkout schema.
+ *
+ * Kept as a function rather than duplicated: a refinement that exists on one
+ * of the two is a rule the step gate enforces and the submit does not, or the
+ * reverse — and either way the customer meets it at the wrong moment.
+ */
+function withPaymentRules<T extends z.ZodTypeAny>(schema: T) {
+  return schema
+    .refine(
+      (values: z.infer<typeof paymentStepFields>) =>
+        values.billingSameAsShipping || !!values.billingAddress,
+      { message: "A billing address is required", path: ["billingAddress"] }
+    )
+    .refine(
+      (values: z.infer<typeof paymentStepFields>) =>
+        values.paymentMethod !== "mpesa" ||
+        KENYAN_MOBILE.test((values.mpesaPhone ?? "").replace(/[\s-]/g, "")),
+      {
+        message: "Enter the M-Pesa number to send the prompt to",
+        path: ["mpesaPhone"],
+      }
+    );
+}
+
+export const paymentStepSchema = withPaymentRules(paymentStepFields);
+export type PaymentStepValues = z.infer<typeof paymentStepFields>;
+
+export const checkoutSchema = withPaymentRules(
+  contactStepSchema.merge(deliveryStepSchema).merge(paymentStepFields)
+);
+export type CheckoutValues = z.infer<typeof contactStepSchema> &
+  z.infer<typeof deliveryStepSchema> &
+  z.infer<typeof paymentStepFields>;
+
+/**
+ * What the browser is allowed to send when starting a checkout.
+ *
+ * Deliberately carries variant ids and quantities and no prices. The server
+ * re-reads every amount from the catalogue in `@/lib/orders`; a `price` field
+ * here would be a field someone could set.
+ */
+export const startCheckoutSchema = z.object({
+  email: emailSchema,
+  marketingOptIn: z.boolean(),
+  shippingAddress: addressSchema,
+  billingAddress: addressSchema.optional().nullable(),
+  billingSameAsShipping: z.boolean(),
+  shippingMethodId: z.enum(["standard", "express", "same-day"]),
+  giftMessage: z.string().trim().max(280).optional().or(z.literal("")),
+  promotionCode: z.string().trim().max(24).optional().nullable(),
+  paymentMethod: z.enum(PAYMENT_METHODS),
+  mpesaPhone: z.string().trim().max(24).optional().or(z.literal("")),
+  lines: z
+    .array(
+      z.object({
+        variantId: z.string().uuid("Unrecognised item"),
+        quantity: z.number().int().min(1).max(20),
+      })
+    )
+    .min(1, "Your bag is empty")
+    .max(50, "Too many items in one order"),
+});
+export type StartCheckoutValues = z.infer<typeof startCheckoutSchema>;
 
 /* ------------------------------------------------------------------ misc */
 
@@ -198,33 +254,9 @@ export type ReviewValues = z.infer<typeof reviewSchema>;
 
 /* -------------------------------------------------------------- helpers */
 
-function luhn(value: string): boolean {
-  let sum = 0;
-  let double = false;
-
-  for (let i = value.length - 1; i >= 0; i--) {
-    let digit = value.charCodeAt(i) - 48;
-    if (double) {
-      digit *= 2;
-      if (digit > 9) digit -= 9;
-    }
-    sum += digit;
-    double = !double;
-  }
-
-  return sum % 10 === 0;
-}
-
-function notExpired(value: string): boolean {
-  const [monthRaw, yearRaw] = value.split("/").map((p) => p.trim());
-  const month = Number(monthRaw);
-  const year = 2000 + Number(yearRaw);
-  if (!Number.isFinite(month) || !Number.isFinite(year)) return false;
-
-  // Cards remain valid through the final day of the printed month.
-  const expiry = new Date(year, month, 1);
-  return expiry.getTime() > Date.now();
-}
+// The Luhn and expiry-date checks that used to live here are gone with the
+// card fields they validated. Card details are entered on Paystack's hosted
+// page now, so there is no card number on this origin to check.
 
 export function countryByCode(code: string) {
   return SHIPPING_COUNTRIES.find((c) => c.code === code) ?? SHIPPING_COUNTRIES[0];

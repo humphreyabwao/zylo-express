@@ -12,6 +12,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "verify": "node scripts/verify.mjs",
+    "schema": "node scripts/build-schema.mjs",
     "seed": "tsx --env-file=.env.local scripts/seed.ts",
     "generate:media": "node scripts/generate-media.mjs",
     "db:types": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/lib/supabase/types.ts"

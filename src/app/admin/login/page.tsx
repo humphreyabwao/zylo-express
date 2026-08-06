@@ -55,7 +55,7 @@ export default function AdminLoginPage() {
       <main className="flex flex-1 items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm">
           <div className="mb-8 text-center">
-            <span className="mx-auto mb-5 grid size-11 place-items-center rounded-sm border border-admin-line bg-admin-panel">
+            <span className="mx-auto mb-5 grid size-11 place-items-center rounded-md border border-admin-line bg-admin-panel">
               <Lock className="size-4.5 text-admin-muted" strokeWidth={1.7} />
             </span>
 

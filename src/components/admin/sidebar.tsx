@@ -57,7 +57,7 @@ export function AdminSidebar({
           href={ADMIN_ROOT}
           className="flex items-center gap-3 overflow-hidden"
         >
-          <span className="grid size-8 shrink-0 place-items-center bg-champagne text-[0.8125rem] font-bold tracking-tight text-obsidian">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-champagne text-[0.8125rem] font-bold tracking-tight text-obsidian">
             Z
           </span>
           <span
@@ -101,7 +101,7 @@ export function AdminSidebar({
                       title={collapsed ? entry.label : undefined}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "group/item relative flex items-center gap-3 rounded-sm px-3 py-2.5 transition-colors duration-300",
+                        "group/item relative flex items-center gap-3 rounded-md px-3 py-2.5 transition-colors duration-300",
                         active
                           ? "bg-admin-active text-admin-fg"
                           : "text-admin-muted hover:bg-admin-hover hover:text-admin-fg"
@@ -134,7 +134,7 @@ export function AdminSidebar({
                         </span>
 
                         {entry.pending && (
-                          <span className="shrink-0 rounded-sm border border-admin-line px-1.5 py-px text-[0.5625rem] font-semibold uppercase tracking-wider text-admin-faint">
+                          <span className="shrink-0 rounded border border-admin-line px-1.5 py-px text-[0.5625rem] font-semibold uppercase tracking-wider text-admin-faint">
                             Soon
                           </span>
                         )}
@@ -155,7 +155,7 @@ export function AdminSidebar({
           onClick={toggle}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           aria-expanded={!collapsed}
-          className="flex w-full items-center gap-3 rounded-sm px-3 py-2.5 text-admin-muted transition-colors duration-300 hover:bg-admin-hover hover:text-admin-fg"
+          className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-admin-muted transition-colors duration-300 hover:bg-admin-hover hover:text-admin-fg"
         >
           {collapsed ? (
             <PanelLeftOpen className="size-[1.125rem] shrink-0" strokeWidth={1.6} />

@@ -82,7 +82,7 @@ export function AdminNotifications({
         aria-label={
           count ? `Notifications, ${count} unread` : "Notifications, none unread"
         }
-        className="relative grid size-9 place-items-center rounded-sm text-admin-muted transition-colors duration-300 hover:bg-admin-hover hover:text-admin-fg"
+        className="relative grid size-9 place-items-center rounded-md text-admin-muted transition-colors duration-300 hover:bg-admin-hover hover:text-admin-fg"
       >
         <Bell className="size-[1.125rem]" strokeWidth={1.7} />
         {count > 0 && (
@@ -96,7 +96,7 @@ export function AdminNotifications({
         <div
           role="dialog"
           aria-label="Notifications"
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[22rem] origin-top-right border border-admin-line bg-admin-panel shadow-lg shadow-black/5 animate-in fade-in-0 zoom-in-95 duration-200"
+          className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[22rem] origin-top-right overflow-hidden rounded-lg border border-admin-line bg-admin-panel shadow-xl shadow-black/10 animate-in fade-in-0 zoom-in-95 duration-200"
         >
           <div className="flex items-center justify-between border-b border-admin-line px-4 py-3">
             <p className="text-[0.8125rem] font-semibold text-admin-fg">
@@ -139,7 +139,7 @@ export function AdminNotifications({
                       >
                         <span
                           className={cn(
-                            "mt-0.5 grid size-7 shrink-0 place-items-center rounded-sm",
+                            "mt-0.5 grid size-7 shrink-0 place-items-center rounded-md",
                             item.kind === "stock" && "bg-destructive/10 text-destructive",
                             item.kind === "order" && "bg-champagne/15 text-champagne-dark",
                             item.kind === "message" && "bg-admin-hover text-admin-muted"

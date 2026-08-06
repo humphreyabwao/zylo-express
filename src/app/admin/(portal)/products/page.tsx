@@ -8,6 +8,7 @@ import { requireAdmin } from "@/lib/admin/guard";
 import { listProducts, normalisePage, LOW_STOCK_THRESHOLD } from "@/lib/admin/queries";
 import { getCategories } from "@/lib/catalog";
 import {
+  AdminButton,
   Badge,
   EmptyState,
   PageHeader,
@@ -19,6 +20,8 @@ import {
 } from "@/components/admin/primitives";
 import { ListToolbar } from "@/components/admin/toolbar";
 import { Pagination } from "@/components/admin/pagination";
+import { ProductActions } from "@/components/admin/product-actions";
+import { RealtimeRefresh } from "@/components/admin/realtime-refresh";
 
 export const metadata = { title: "Products" };
 
@@ -54,13 +57,11 @@ export default async function AdminProductsPage({
         title="Products"
         description="Create, price and publish everything in the catalogue."
       >
-        <Link
-          href="/admin/products/new"
-          className="flex h-9 items-center gap-1.5 rounded-sm bg-admin-fg px-4 text-[0.8125rem] font-semibold text-admin-panel transition-opacity duration-200 hover:opacity-85"
-        >
+        <RealtimeRefresh channel="products" label="catalogue" />
+        <AdminButton href="/admin/products/new">
           <Plus className="size-4" strokeWidth={2.2} />
           New product
-        </Link>
+        </AdminButton>
       </PageHeader>
 
       <Panel>
@@ -106,24 +107,24 @@ export default async function AdminProductsPage({
                 : "The catalogue is empty. Create the first product to get started."
             }
             action={
-              <Link
-                href="/admin/products/new"
-                className="inline-flex h-9 items-center gap-1.5 rounded-sm bg-admin-fg px-4 text-[0.8125rem] font-semibold text-admin-panel transition-opacity hover:opacity-85"
-              >
+              <AdminButton href="/admin/products/new">
                 <Plus className="size-4" strokeWidth={2.2} />
                 New product
-              </Link>
+              </AdminButton>
             }
           />
         ) : (
           <Table>
             <thead>
               <tr>
-                <Th className="w-[40%]">Product</Th>
+                <Th className="w-[38%]">Product</Th>
                 <Th>Status</Th>
                 <Th align="right">Price</Th>
                 <Th align="right">Variants</Th>
                 <Th align="right">Stock</Th>
+                <Th align="right" className="w-16">
+                  <span className="sr-only">Actions</span>
+                </Th>
               </tr>
             </thead>
 
@@ -140,7 +141,7 @@ export default async function AdminProductsPage({
                         href={`/admin/products/${product.id}`}
                         className="flex items-center gap-3 transition-opacity duration-200 hover:opacity-75"
                       >
-                        <span className="relative size-10 shrink-0 overflow-hidden bg-admin-hover">
+                        <span className="relative size-10 shrink-0 overflow-hidden rounded-lg border border-admin-line bg-admin-hover">
                           {product.image_path && (
                             <Image
                               src={storageUrl(product.image_path)}
@@ -194,6 +195,10 @@ export default async function AdminProductsPage({
                       >
                         {product.stock}
                       </span>
+                    </Td>
+
+                    <Td align="right">
+                      <ProductActions product={product} />
                     </Td>
                   </Tr>
                 );

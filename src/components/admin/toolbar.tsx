@@ -90,7 +90,7 @@ export function ListToolbar({
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder={searchPlaceholder}
           aria-label={searchPlaceholder}
-          className="h-9 w-full rounded-sm border border-admin-line bg-transparent pl-9 pr-9 text-[0.8125rem] text-admin-fg outline-none transition-colors duration-200 placeholder:text-admin-faint focus:border-champagne"
+          className="h-9 w-full rounded-md border border-admin-line bg-transparent pl-9 pr-9 text-[0.8125rem] text-admin-fg outline-none transition-colors duration-200 placeholder:text-admin-faint focus:border-champagne"
         />
         {term && (
           <button
@@ -101,7 +101,7 @@ export function ListToolbar({
               commit({ q: null });
             }}
             aria-label="Clear search"
-            className="absolute right-2 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-sm text-admin-faint transition-colors hover:text-admin-fg"
+            className="absolute right-2 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-md text-admin-faint transition-colors hover:text-admin-fg"
           >
             <X className="size-3.5" strokeWidth={2} />
           </button>
@@ -118,7 +118,7 @@ export function ListToolbar({
               commit({ [filter.name]: event.target.value || null })
             }
             className={cn(
-              "h-9 rounded-sm border border-admin-line bg-transparent px-3 text-[0.8125rem] font-medium text-admin-fg outline-none transition-colors duration-200 focus:border-champagne",
+              "h-9 rounded-md border border-admin-line bg-transparent px-3 text-[0.8125rem] font-medium text-admin-fg outline-none transition-colors duration-200 focus:border-champagne",
               // Native selects inherit the page background for their popup in
               // most browsers; forcing the panel colour keeps it legible in dark.
               "[&>option]:bg-admin-panel [&>option]:text-admin-fg"

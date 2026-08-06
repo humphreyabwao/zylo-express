@@ -59,7 +59,7 @@ export function AdminLoginForm() {
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           placeholder="you@zylo.com"
-          className="h-11 w-full rounded-sm border border-admin-line bg-admin-panel px-3.5 text-[0.875rem] text-admin-fg outline-none transition-colors duration-200 placeholder:text-admin-faint focus:border-champagne"
+          className="h-11 w-full rounded-md border border-admin-line bg-admin-panel px-3.5 text-[0.875rem] text-admin-fg outline-none transition-colors duration-200 placeholder:text-admin-faint focus:border-champagne"
         />
       </div>
 
@@ -82,14 +82,14 @@ export function AdminLoginForm() {
           autoComplete="current-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          className="h-11 w-full rounded-sm border border-admin-line bg-admin-panel px-3.5 text-[0.875rem] text-admin-fg outline-none transition-colors duration-200 focus:border-champagne"
+          className="h-11 w-full rounded-md border border-admin-line bg-admin-panel px-3.5 text-[0.875rem] text-admin-fg outline-none transition-colors duration-200 focus:border-champagne"
         />
       </div>
 
       <button
         type="submit"
         disabled={pending}
-        className="flex h-11 w-full items-center justify-center gap-2 rounded-sm bg-admin-fg text-[0.875rem] font-semibold text-admin-panel transition-opacity duration-200 hover:opacity-90 disabled:opacity-60"
+        className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-admin-fg text-[0.875rem] font-semibold text-admin-panel transition-opacity duration-200 hover:opacity-90 disabled:opacity-60"
       >
         {pending && <Loader2 className="size-4 animate-spin" strokeWidth={2} />}
         {pending ? "Checking…" : "Sign in"}
@@ -98,7 +98,7 @@ export function AdminLoginForm() {
       {notice && (
         <p
           role="status"
-          className="border border-admin-line bg-admin-panel px-3.5 py-3 text-[0.75rem] leading-relaxed text-admin-muted"
+          className="rounded-lg border border-admin-line bg-admin-panel px-3.5 py-3 text-[0.75rem] leading-relaxed text-admin-muted"
         >
           {notice}
         </p>

@@ -106,7 +106,7 @@ export function Pagination<T>({
                 href={href(entry)}
                 aria-current={entry === current ? "page" : undefined}
                 className={cn(
-                  "admin-figure grid size-8 place-items-center rounded-sm border text-[0.75rem] font-semibold transition-colors duration-200",
+                  "admin-figure grid size-8 place-items-center rounded-md border text-[0.75rem] font-semibold transition-colors duration-200",
                   entry === current
                     ? "border-champagne bg-admin-active text-admin-fg"
                     : "border-transparent text-admin-muted hover:border-admin-line hover:text-admin-fg"
@@ -142,7 +142,7 @@ function PageArrow({
   children: React.ReactNode;
 }) {
   const className =
-    "grid size-8 place-items-center rounded-sm border border-transparent transition-colors duration-200";
+    "grid size-8 place-items-center rounded-md border border-transparent transition-colors duration-200";
 
   // A disabled arrow must not be a link at all — an anchor with no href is
   // still focusable and still announced as a link.

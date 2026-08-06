@@ -43,7 +43,7 @@ export function AdminTopbar({
         type="button"
         onClick={onOpenMobileNav}
         aria-label="Open navigation"
-        className="grid size-9 place-items-center rounded-sm text-admin-muted transition-colors duration-300 hover:bg-admin-hover hover:text-admin-fg lg:hidden"
+        className="grid size-9 place-items-center rounded-md text-admin-muted transition-colors duration-300 hover:bg-admin-hover hover:text-admin-fg lg:hidden"
       >
         <Menu className="size-5" strokeWidth={1.7} />
       </button>

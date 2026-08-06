@@ -76,7 +76,6 @@ export const ADMIN_NAV: AdminModuleGroup[] = [
         label: "Inventory",
         icon: Warehouse,
         description: "Stock levels across every variant",
-        pending: true,
       },
       {
         segment: "categories",

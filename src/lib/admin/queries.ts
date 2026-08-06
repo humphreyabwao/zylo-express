@@ -2,9 +2,11 @@ import "server-only";
 
 import { createOperatorClient } from "@/lib/admin/guard";
 import type {
+  InventorySummaryRpcResult,
   OrderRow,
   OrderStatusDb,
   ProductRow,
+  ProductVariantRow,
   ProfileRow,
   PromotionRow,
   UserRoleDb,
@@ -232,6 +234,180 @@ export async function listProducts(
       ),
       image_path: images[0]?.storage_path ?? null,
     } satisfies ProductListRow;
+  });
+
+  return toPage(rows, count, page, pageSize);
+}
+
+/* ----------------------------------------------------------------- inventory */
+
+/**
+ * A variant, with the product it belongs to.
+ *
+ * Inventory is variant-level: the product row has no stock of its own, and
+ * `reserve_inventory` decrements exactly these rows at checkout. A product-
+ * shaped inventory list would have to sum its children and could not offer an
+ * edit, because there is nothing on the parent to edit.
+ */
+export interface InventoryRow extends ProductVariantRow {
+  product_name: string;
+  product_slug: string;
+  product_active: boolean;
+}
+
+export type StockStatus = "all" | "in-stock" | "low" | "out";
+
+export interface InventoryFilters {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: StockStatus;
+  sort?: "stock-asc" | "stock-desc" | "value-desc" | "sku" | "product";
+}
+
+export async function getInventorySummary(): Promise<InventorySummaryRpcResult> {
+  const supabase = await createOperatorClient();
+
+  const { data, error } = await supabase.rpc("inventory_summary", {
+    p_low_threshold: LOW_STOCK_THRESHOLD,
+  });
+
+  if (error || !data) {
+    // PGRST202 is "no such function" — the migration that adds
+    // `inventory_summary` has not been applied to this database. That is a
+    // setup step, not a failure, and it deserves a line that says so rather
+    // than a generic error the reader has to go and decode.
+    //
+    // The object is spread rather than logged directly: a PostgrestError has
+    // no own enumerable properties that survive structured logging, so
+    // `console.error(msg, error)` prints `{}` and tells nobody anything.
+    if (error?.code === "PGRST202") {
+      console.warn(
+        "[admin] inventory_summary() is missing — apply migration 9 " +
+          "(npm run schema -- --from 7). Showing zeroed totals meanwhile."
+      );
+    } else {
+      console.error("[admin] inventory summary failed:", {
+        code: error?.code,
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+      });
+    }
+
+    // Zeroes rather than a thrown error: the table below this summary reads
+    // from ordinary queries and is perfectly usable, so failing the whole page
+    // over a missing aggregate would take away the working half too.
+    return {
+      variant_count: 0,
+      unit_count: 0,
+      out_of_stock: 0,
+      low_stock: 0,
+      retail_value: 0,
+      live_out_of_stock: 0,
+    };
+  }
+
+  return data;
+}
+
+export async function listInventory(
+  filters: InventoryFilters = {}
+): Promise<Page<InventoryRow>> {
+  const supabase = await createOperatorClient();
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+  const from = (page - 1) * pageSize;
+
+  // `!inner` rather than a plain embed: an inventory row with no product is
+  // meaningless, and the inner join is also what lets the sort below order by
+  // a column on the joined table.
+  let query = supabase
+    .from("product_variants")
+    .select("*, products!inner(name, slug, is_active)", { count: "exact" });
+
+  const term = filters.search?.trim();
+  if (term) {
+    // Escaped: a comma or parenthesis would otherwise be read as PostgREST
+    // filter syntax rather than as text.
+    const safe = term.replace(/[(),*]/g, " ");
+
+    // Product name lives on the joined table, and PostgREST cannot OR across
+    // an embed and the base table in one expression. Resolving the ids first
+    // costs a round trip only when someone is actually searching.
+    const { data: matches } = await supabase
+      .from("products")
+      .select("id")
+      .ilike("name", `%${safe}%`)
+      .limit(200);
+
+    const ids = (matches ?? []).map((row) => row.id);
+    const clauses = [`sku.ilike.%${safe}%`, `title.ilike.%${safe}%`];
+    if (ids.length) clauses.push(`product_id.in.(${ids.join(",")})`);
+
+    query = query.or(clauses.join(","));
+  }
+
+  switch (filters.status) {
+    case "out":
+      query = query.lte("inventory_quantity", 0);
+      break;
+    case "low":
+      query = query
+        .gt("inventory_quantity", 0)
+        .lte("inventory_quantity", LOW_STOCK_THRESHOLD);
+      break;
+    case "in-stock":
+      query = query.gt("inventory_quantity", LOW_STOCK_THRESHOLD);
+      break;
+    default:
+      break;
+  }
+
+  switch (filters.sort) {
+    case "stock-desc":
+      query = query.order("inventory_quantity", { ascending: false });
+      break;
+    case "value-desc":
+      // No expression sort over price × quantity through PostgREST, so this
+      // approximates by price. Ordering by true stock value would need a view
+      // or a generated column; the honest approximation beats a silent lie.
+      query = query.order("price", { ascending: false });
+      break;
+    case "sku":
+      query = query.order("sku", { ascending: true });
+      break;
+    case "product":
+      query = query.order("name", {
+        ascending: true,
+        referencedTable: "products",
+      });
+      break;
+    default:
+      // Scarcest first. This screen exists to surface what needs restocking,
+      // so the default order is the one that answers that without a filter.
+      query = query.order("inventory_quantity", { ascending: true });
+  }
+
+  const { data, count, error } = await query.range(from, from + pageSize - 1);
+
+  if (error) {
+    console.error("[admin] inventory list failed:", error);
+    return toPage<InventoryRow>([], 0, page, pageSize);
+  }
+
+  type Joined = ProductVariantRow & {
+    products: { name: string; slug: string; is_active: boolean } | null;
+  };
+
+  const rows = (data as unknown as Joined[]).map((row) => {
+    const { products, ...variant } = row;
+    return {
+      ...variant,
+      product_name: products?.name ?? "—",
+      product_slug: products?.slug ?? "",
+      product_active: products?.is_active ?? false,
+    } satisfies InventoryRow;
   });
 
   return toPage(rows, count, page, pageSize);

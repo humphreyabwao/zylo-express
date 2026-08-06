@@ -17,21 +17,7 @@ export function useHydrated() {
   return useSyncExternalStore(noop, onClient, onServer);
 }
 
-/**
- * Reads a key from `sessionStorage`, returning `null` during the server render
- * so hydration cannot mismatch. The value is read once per page life — nothing
- * in the app writes to these keys while a reader is mounted.
- */
-export function useSessionValue(key: string) {
-  return useSyncExternalStore(
-    noop,
-    () => {
-      try {
-        return sessionStorage.getItem(key);
-      } catch {
-        return null;
-      }
-    },
-    () => null
-  );
-}
+// `useSessionValue` lived here to read the order snapshot the checkout wrote
+// before redirecting to the confirmation. That snapshot is gone: payments now
+// leave the site and come back, so the confirmation is rendered from the order
+// row on the server instead of from anything the browser was holding.

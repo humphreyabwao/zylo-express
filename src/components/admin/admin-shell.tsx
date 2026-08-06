@@ -75,7 +75,7 @@ export function AdminShell({
         >
           <div className="flex h-16 shrink-0 items-center justify-between border-b border-admin-line px-5">
             <Link href={ADMIN_ROOT} className="flex items-center gap-3">
-              <span className="grid size-8 place-items-center bg-champagne text-[0.8125rem] font-bold text-obsidian">
+              <span className="grid size-8 place-items-center rounded-lg bg-champagne text-[0.8125rem] font-bold text-obsidian">
                 Z
               </span>
               <span className="text-[0.9375rem] font-semibold tracking-tight">
@@ -88,7 +88,7 @@ export function AdminShell({
               type="button"
               onClick={() => setMobileOpen(false)}
               aria-label="Close navigation"
-              className="grid size-8 place-items-center rounded-sm text-admin-muted hover:bg-admin-hover hover:text-admin-fg"
+              className="grid size-8 place-items-center rounded-md text-admin-muted hover:bg-admin-hover hover:text-admin-fg"
             >
               <X className="size-4" strokeWidth={1.8} />
             </button>
@@ -116,7 +116,7 @@ export function AdminShell({
                           onClick={() => setMobileOpen(false)}
                           aria-current={active ? "page" : undefined}
                           className={cn(
-                            "flex items-center gap-3 rounded-sm px-3 py-2.5 text-[0.8125rem] font-medium transition-colors duration-300",
+                            "flex items-center gap-3 rounded-md px-3 py-2.5 text-[0.8125rem] font-medium transition-colors duration-300",
                             active
                               ? "bg-admin-active text-admin-fg"
                               : "text-admin-muted hover:bg-admin-hover hover:text-admin-fg"

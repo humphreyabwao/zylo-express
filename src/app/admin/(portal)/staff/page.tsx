@@ -107,7 +107,7 @@ export default async function AdminStaffPage({
                   <Tr key={person.id}>
                     <Td>
                       <span className="flex items-center gap-2.5">
-                        <span className="grid size-8 shrink-0 place-items-center rounded-sm bg-admin-hover text-[0.6875rem] font-bold text-admin-muted">
+                        <span className="grid size-8 shrink-0 place-items-center rounded-md bg-admin-hover text-[0.6875rem] font-bold text-admin-muted">
                           {(person.first_name?.[0] ?? person.email[0] ?? "?").toUpperCase()}
                         </span>
 

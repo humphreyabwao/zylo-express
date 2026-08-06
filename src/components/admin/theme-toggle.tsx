@@ -1,81 +1,50 @@
 "use client";
 
-import * as React from "react";
+import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
-import { Monitor, Moon, Sun } from "lucide-react";
-
-import { cn } from "@/lib/utils";
 
 /**
- * Three-state theme control: light, dark, system.
+ * Light/dark switch for the portal.
  *
- * A two-state toggle silently drops "follow the OS", which is the setting most
- * people actually want — and once dropped there is no way back to it without
- * clearing storage. Three explicit segments cost one extra button.
+ * Same mechanism as the storefront's — see `src/components/layout/theme-toggle`
+ * — deliberately, so the two halves of the product behave identically.
  *
- * Renders a placeholder until mounted. `useTheme` cannot know the resolved
- * theme during SSR, so painting the real state immediately would mean marking
- * whichever segment the server guessed, then correcting it on hydration.
+ * This replaced a three-segment light/system/dark radiogroup. Two problems with
+ * that control, one cosmetic and one real:
+ *
+ *   - It was a bordered pill of three tiny targets in a toolbar of single
+ *     icons, which made the busiest corner of the portal look unresolved.
+ *   - `enableSystem` is `false` on the provider (`src/components/providers`),
+ *     so the middle segment set a theme next-themes was not tracking. It
+ *     appeared to work and did nothing.
+ *
+ * Which state we are in is expressed in CSS via the `dark:` variant rather than
+ * in React state. `next-themes` writes `class="dark"` onto <html> from a
+ * blocking inline script, so the correct icon is painted on the first frame —
+ * no mount gate, no hydration mismatch, no flash of the wrong glyph for an
+ * operator whose stored preference is dark. Reading `resolvedTheme` to choose
+ * the icon would do all three wrong: it is `undefined` until after hydration.
  */
-
-const OPTIONS = [
-  { value: "light", label: "Light", icon: Sun },
-  { value: "system", label: "System", icon: Monitor },
-  { value: "dark", label: "Dark", icon: Moon },
-] as const;
-
-/**
- * Hydration probe.
- *
- * `useSyncExternalStore` with a never-firing subscription returns the server
- * snapshot during SSR and the client one after hydration — which is exactly the
- * "am I mounted" signal, without a `useState` that an effect immediately
- * overwrites.
- */
-const NEVER_CHANGES = () => () => {};
-
-function useHydrated() {
-  return React.useSyncExternalStore(
-    NEVER_CHANGES,
-    () => true,
-    () => false
-  );
-}
-
 export function AdminThemeToggle() {
-  const { theme, setTheme } = useTheme();
-  const mounted = useHydrated();
+  const { resolvedTheme, setTheme } = useTheme();
+
+  // Only runs on click, by which point `resolvedTheme` is populated. The
+  // fallback keeps the first click sane if it somehow is not.
+  const toggle = () => setTheme(resolvedTheme === "dark" ? "light" : "dark");
 
   return (
-    <div
-      role="radiogroup"
-      aria-label="Colour theme"
-      className="flex items-center gap-0.5 rounded-sm border border-admin-line p-0.5"
+    <button
+      type="button"
+      onClick={toggle}
+      className="grid size-8 shrink-0 place-items-center rounded-md text-admin-muted transition-colors duration-200 outline-none hover:bg-admin-hover hover:text-admin-fg focus-visible:ring-2 focus-visible:ring-champagne"
     >
-      {OPTIONS.map((option) => {
-        const Icon = option.icon;
-        const active = mounted && theme === option.value;
+      <Moon className="size-4 dark:hidden" strokeWidth={1.7} aria-hidden />
+      <Sun className="hidden size-4 dark:block" strokeWidth={1.7} aria-hidden />
 
-        return (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            aria-label={option.label}
-            title={option.label}
-            onClick={() => setTheme(option.value)}
-            className={cn(
-              "grid size-7 place-items-center rounded-[2px] transition-colors duration-300",
-              active
-                ? "bg-admin-active text-admin-fg"
-                : "text-admin-faint hover:text-admin-fg"
-            )}
-          >
-            <Icon className="size-3.5" strokeWidth={1.8} />
-          </button>
-        );
-      })}
-    </div>
+      {/* `hidden` keeps the inactive label out of the accessibility tree, so
+          the button has exactly one name rather than two contradictory ones. */}
+      <span className="sr-only dark:hidden">Switch to dark theme</span>
+      <span className="sr-only hidden dark:inline">Switch to light theme</span>
+    </button>
   );
 }

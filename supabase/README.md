@@ -22,10 +22,38 @@ call in this app is made server-side precisely so no key needs to ship.
 neither the publishable nor the secret key can run DDL through PostgREST. It
 needs either the database password or a Supabase access token.
 
-### Option A — SQL Editor (no tooling)
+### Option A — SQL Editor, one paste
 
-Open **Dashboard → SQL Editor** and run each file in `migrations/` in filename
-order. They are numbered and must be run in sequence:
+```bash
+npm run schema
+```
+
+That writes **`supabase/schema.sql`**: all seven migrations concatenated in
+dependency order, with a guard at the top that aborts cleanly if the schema is
+already applied. Open **Dashboard → SQL Editor**, paste the whole file, run it
+once. The editor runs the buffer as a single transaction, so a failure anywhere
+rolls the entire thing back — you never end up half-migrated.
+
+`schema.sql` is generated. Change `migrations/`, then re-run `npm run schema`;
+editing the generated file gives you a schema that disagrees with its own
+source, and the copy you notice last is the one the database actually ran.
+
+**On a database that is already set up**, the full file is not what you want —
+it aborts on its own guard. Ask for just the migrations added since:
+
+```bash
+npm run schema -- --from 7      # writes supabase/schema-pending.sql
+```
+
+The project database currently has migrations 1–6. Migrations **7 (payments)**
+and **8 (realtime)** are still pending, so `--from 7` is the file to paste.
+
+> **If it stops on `must be owner of table objects`** — that is the storage
+> policy block in migration 5. Some projects do not grant the SQL editor's role
+> ownership of `storage.objects`. Everything else will have rolled back, so
+> create the two buckets by hand first (**Storage → New bucket**: `media`,
+> public; `user-content`, private), delete that one `create policy` block, and
+> re-run. The bucket UI writes equivalent policies.
 
 | Order | File | What it creates |
 |---|---|---|
@@ -35,6 +63,7 @@ order. They are numbered and must be run in sequence:
 | 4 | `20260806000004_rls.sql` | Row Level Security on every table |
 | 5 | `20260806000005_storage_and_rpc.sql` | storage buckets and policies, search/facet/inventory RPCs |
 | 6 | `20260806000006_oauth_profiles.sql` | profile trigger that understands OAuth metadata, plus a backfill |
+| 7 | `20260806000007_payments.sql` | payments, webhook event log, settle/fail/expire RPCs |
 
 ### Option B — Supabase CLI
 
@@ -42,6 +71,10 @@ order. They are numbered and must be run in sequence:
 npx supabase link --project-ref gwddqngawlooldswsxey   # asks for the DB password
 npx supabase db push
 ```
+
+Prefer this if you have the database password: it records what has been applied
+in `supabase_migrations`, so later changes are incremental rather than another
+full paste.
 
 ## 3. Seed the catalogue
 
@@ -133,15 +166,49 @@ Marketing consent is deliberately **not** inferred for OAuth sign-ups: Google
 was never asked, so the profile defaults to opted out and the customer opts in
 from account settings.
 
-## 6. Edge Functions (optional)
+## 6. Payments
 
-```bash
-npx supabase functions deploy create-order
+Two providers, both driven entirely server-side — see `src/lib/payments/`.
+
+| Method | Provider | Flow |
+| --- | --- | --- |
+| Card | Paystack | Initialise → redirect to Paystack's hosted page → callback → verify |
+| M-Pesa | Paystack | Charge → STK prompt on the handset → webhook, with the browser polling |
+| PayPal | PayPal Orders v2 | Create order → redirect to approval → return → capture |
+
+Set the credentials in `.env.local` (see `.env.example`), then register both
+webhooks in the provider dashboards:
+
+```
+https://<your-domain>/api/payments/paystack/webhook
+https://<your-domain>/api/payments/paypal/webhook
 ```
 
-`create-order` recomputes every price from the catalogue and claims stock via
-`reserve_inventory`, whose conditional `UPDATE` is what stops two simultaneous
-checkouts overselling the last unit. The client never sends prices.
+Paystack's is authenticated by an HMAC-SHA512 of the raw body keyed by the
+secret key. PayPal's needs `PAYPAL_WEBHOOK_ID` — without it the route rejects
+every delivery rather than trusting one it cannot verify.
+
+**Schedule the expiry sweep.** Every redirect flow leaks abandoned attempts,
+and each one holds its stock in a `pending` order. `/api/payments/expire`
+releases them; on Vercel, add to `vercel.json`:
+
+```json
+{ "crons": [{ "path": "/api/payments/expire", "schedule": "*/5 * * * *" }] }
+```
+
+It requires `CRON_SECRET` as a bearer token and refuses to run without one.
+
+### The `create-order` Edge Function is gone
+
+It has been replaced by `src/lib/orders.ts`, which does the same authoritative
+repricing but writes orders as `pending` so that only a verified payment can
+confirm one. The old function wrote them `confirmed` outright — if it is still
+deployed it is a public endpoint that creates paid-looking orders nobody paid
+for. Remove it:
+
+```bash
+npx supabase functions delete create-order
+```
 
 ## 7. Redis (optional, recommended in production)
 

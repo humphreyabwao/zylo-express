@@ -59,7 +59,7 @@ export function StaffRoleControl({
     return (
       <span
         title={disabledReason}
-        className="inline-flex h-8 cursor-not-allowed items-center rounded-sm border border-admin-line px-2.5 text-[0.75rem] font-medium text-admin-faint"
+        className="inline-flex h-8 cursor-not-allowed items-center rounded-md border border-admin-line px-2.5 text-[0.75rem] font-medium text-admin-faint"
       >
         {ROLE_LABEL[current]}
       </span>
@@ -74,7 +74,7 @@ export function StaffRoleControl({
         onChange={(event) => onChange(event.target.value as UserRoleDb)}
         aria-label="Role"
         className={cn(
-          "h-8 rounded-sm border border-admin-line bg-transparent pl-2.5 pr-7 text-[0.75rem] font-medium text-admin-fg outline-none transition-colors duration-200 focus:border-champagne",
+          "h-8 rounded-md border border-admin-line bg-transparent pl-2.5 pr-7 text-[0.75rem] font-medium text-admin-fg outline-none transition-colors duration-200 focus:border-champagne",
           "[&>option]:bg-admin-panel [&>option]:text-admin-fg",
           pending && "opacity-60"
         )}
