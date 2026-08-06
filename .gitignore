@@ -15,6 +15,9 @@
 
 # next.js
 /.next/
+# Scratch build dir used by `npm run verify` so checks never clobber a running
+# server's assets.
+/.next-verify/
 /out/
 
 # production

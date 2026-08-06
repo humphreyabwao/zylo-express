@@ -180,7 +180,7 @@ export function CheckoutFlow() {
           </p>
         </div>
         <Button asChild size="lg">
-          <Link href="/collections/all">Browse the collection</Link>
+          <Link href="/shop">Browse the collection</Link>
         </Button>
       </div>
     );

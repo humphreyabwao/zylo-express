@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import {
   getAllProducts,
   getCategoryBySlug,
+  getCountryByCode,
   getProductBySlug,
   getRelatedProducts,
 } from "@/lib/catalog";
@@ -20,15 +21,16 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-export function generateStaticParams() {
-  return getAllProducts().map((product) => ({ slug: product.slug }));
+export async function generateStaticParams() {
+  const products = await getAllProducts();
+  return products.map((product) => ({ slug: product.slug }));
 }
 
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const product = getProductBySlug(slug);
+  const product = await getProductBySlug(slug);
   if (!product) return { title: "Not found" };
 
   return {
@@ -51,11 +53,14 @@ export async function generateMetadata({
 
 export default async function ProductPage({ params }: PageProps) {
   const { slug } = await params;
-  const product = getProductBySlug(slug);
+  const product = await getProductBySlug(slug);
   if (!product) notFound();
 
-  const category = getCategoryBySlug(product.categorySlug);
-  const related = getRelatedProducts(product, 8);
+  const [category, related, country] = await Promise.all([
+    getCategoryBySlug(product.categorySlug),
+    getRelatedProducts(product, 8),
+    getCountryByCode(product.originCountry),
+  ]);
 
   // Product schema so the listing is eligible for rich results.
   const jsonLd = {
@@ -66,6 +71,10 @@ export default async function ProductPage({ params }: PageProps) {
     sku: product.variants[0]?.sku,
     brand: { "@type": "Brand", name: "ZYLO" },
     image: product.images.map((image) => absoluteUrl(image.url)),
+    material: product.composition,
+    ...(country && {
+      countryOfOrigin: { "@type": "Country", name: country.name },
+    }),
     aggregateRating: {
       "@type": "AggregateRating",
       ratingValue: product.rating,
@@ -125,8 +134,23 @@ export default async function ProductPage({ params }: PageProps) {
                 </dd>
               </div>
               <div>
-                <dt className="eyebrow-sm text-muted-foreground">Origin</dt>
-                <dd className="mt-2.5 text-sm font-light">{product.origin}</dd>
+                <dt className="eyebrow-sm text-muted-foreground">Ships from</dt>
+                <dd className="mt-2.5 text-sm font-light">
+                  {country ? (
+                    <>
+                      <span className="flex items-center gap-2">
+                        <span aria-hidden="true">{country.flag}</span>
+                        <span>{product.origin}</span>
+                      </span>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        Dispatched in {country.leadTimeMinDays}–
+                        {country.leadTimeMaxDays} days
+                      </span>
+                    </>
+                  ) : (
+                    product.origin
+                  )}
+                </dd>
               </div>
               <div>
                 <dt className="eyebrow-sm text-muted-foreground">Price</dt>

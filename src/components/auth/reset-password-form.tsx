@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { MailCheck } from "lucide-react";
 
+import { requestPasswordReset } from "@/app/actions/auth";
 import {
   resetRequestSchema,
   type ResetRequestValues,
@@ -29,11 +30,19 @@ export function ResetPasswordForm() {
     defaultValues: { email: "" },
   });
 
-  // Replaced by `supabase.auth.resetPasswordForEmail` in the backend phase.
   const onSubmit = async (values: ResetRequestValues) => {
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    // Always acknowledge, whether or not the address exists — never confirm
-    // account existence to an unauthenticated caller.
+    const formData = new FormData();
+    formData.set("email", values.email);
+
+    const result = await requestPasswordReset({}, formData);
+
+    if (result?.fieldErrors?.email) {
+      form.setError("email", { message: result.fieldErrors.email });
+      return;
+    }
+
+    // Acknowledged either way. The action deliberately does not reveal whether
+    // the address is registered, and neither does this screen.
     setSentTo(values.email);
   };
 

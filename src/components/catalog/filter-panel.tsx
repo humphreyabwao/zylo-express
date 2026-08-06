@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 interface FilterPanelProps {
   facets: CatalogFacets;
   /** Facets already implied by the route are hidden to avoid dead controls. */
-  hide?: Array<"categories" | "collections">;
+  hide?: Array<"categories" | "collections" | "countries">;
   className?: string;
 }
 
@@ -64,9 +64,56 @@ export function FilterPanel({ facets, hide = [], className }: FilterPanelProps) 
     <div className={cn("w-full", className)}>
       <Accordion
         type="multiple"
-        defaultValue={["Category", "Colour", "Price"]}
+        defaultValue={["Category", "Ships from", "Colour", "Price"]}
         className="w-full"
       >
+        {/* Origin sits high in the panel: on ZYLO Express it drives the
+            delivery estimate, so it is a shipping decision as much as a
+            merchandising one. Rendered separately because each row carries a
+            flag and a lead-time line the generic facet list has no room for. */}
+        {!hide.includes("countries") && facets.countries.length > 0 && (
+          <AccordionItem value="Ships from">
+            <AccordionTrigger>
+              Ships from
+              {filters.countries.length > 0 && (
+                <span className="ml-auto mr-3 text-champagne-dark">
+                  {filters.countries.length}
+                </span>
+              )}
+            </AccordionTrigger>
+            <AccordionContent>
+              <ul className="space-y-3.5">
+                {facets.countries.map((country) => (
+                  <li key={country.value}>
+                    <label className="flex cursor-pointer items-center gap-3">
+                      <Checkbox
+                        checked={filters.countries.includes(country.value)}
+                        onCheckedChange={() =>
+                          toggleValue("countries", country.value)
+                        }
+                      />
+                      <span aria-hidden="true" className="text-base leading-none">
+                        {country.flag}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block truncate text-sm font-light text-foreground">
+                          {country.label}
+                        </span>
+                        <span className="block text-xs font-light text-muted-foreground">
+                          {country.leadTimeMinDays}–{country.leadTimeMaxDays} days
+                        </span>
+                      </span>
+                      <span className="text-xs font-light tabular-nums text-muted-foreground">
+                        {country.count}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </AccordionContent>
+          </AccordionItem>
+        )}
+
         {sections.map((section) => (
           <AccordionItem key={section.key} value={section.label}>
             <AccordionTrigger>

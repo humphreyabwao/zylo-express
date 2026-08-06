@@ -19,12 +19,19 @@ import { CategoryStrip } from "@/components/home/category-strip";
 import { JournalPreview } from "@/components/home/journal-preview";
 import { Assurances } from "@/components/home/assurances";
 
-export default function HomePage() {
-  const collections = getFeaturedCollections();
-  const featured = getFeaturedProducts(8);
-  const newArrivals = getNewArrivals(8);
-  const categories = getCategories();
-  const journal = getJournal().slice(0, 3);
+export default async function HomePage() {
+  // One round of parallel reads rather than five sequential awaits — these
+  // are independent, and the home page is the first paint most visitors get.
+  const [collections, featured, newArrivals, categories, allJournal] =
+    await Promise.all([
+      getFeaturedCollections(),
+      getFeaturedProducts(8),
+      getNewArrivals(8),
+      getCategories(),
+      getJournal(),
+    ]);
+
+  const journal = allJournal.slice(0, 3);
 
   return (
     <>
@@ -37,7 +44,7 @@ export default function HomePage() {
           eyebrow="Selected"
           title="The pieces we would choose"
           description="Eight objects that show what the workshop can do — the icons, and the ones that take longest."
-          link={{ href: "/collections/all", label: "Shop all" }}
+          link={{ href: "/shop", label: "Shop all" }}
         />
         <div className="mt-14">
           <ProductRail products={featured} />

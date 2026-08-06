@@ -48,7 +48,7 @@ export function WishlistView({ products }: { products: Product[] }) {
           </p>
         </div>
         <Button asChild>
-          <Link href="/collections/all">Browse the collection</Link>
+          <Link href="/shop">Browse the collection</Link>
         </Button>
       </div>
     );

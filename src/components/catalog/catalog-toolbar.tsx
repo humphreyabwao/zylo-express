@@ -3,7 +3,7 @@
 import { SlidersHorizontal, X } from "lucide-react";
 
 import type { CatalogFacets, ProductFlag, SortKey } from "@/lib/types";
-import { SORT_OPTIONS, activeFilterCount, flagLabel } from "@/lib/catalog";
+import { SORT_OPTIONS, activeFilterCount, flagLabel } from "@/lib/filters";
 import { useCatalogFilters } from "@/hooks/use-catalog-filters";
 import { useUiStore } from "@/store/ui-store";
 import { cn, formatPrice, pluralize } from "@/lib/utils";
@@ -31,7 +31,7 @@ export function CatalogToolbar({
   const count = activeFilterCount(filters);
 
   const labelFor = (
-    key: "categories" | "collections" | "colors" | "sizes",
+    key: "categories" | "collections" | "countries" | "colors" | "sizes",
     value: string
   ) => facets[key].find((f) => f.value === value)?.label ?? value;
 
@@ -47,6 +47,15 @@ export function CatalogToolbar({
         value: v,
         label: labelFor("collections", v),
       })),
+      ...filters.countries.map((v) => {
+        const country = facets.countries.find((c) => c.value === v);
+        return {
+          key: "countries" as const,
+          value: v,
+          // The flag makes an origin chip scannable in a row of text chips.
+          label: country ? `${country.flag} ${country.label}` : v,
+        };
+      }),
       ...filters.colors.map((v) => ({
         key: "colors" as const,
         value: v,
@@ -80,7 +89,10 @@ export function CatalogToolbar({
 
   return (
     <div className={cn("space-y-5", className)}>
-      <div className="flex items-center justify-between gap-4 border-b border-hairline pb-5">
+      {/* Wraps rather than overflows: the sort trigger has a fixed width, and
+          below ~340px it and the filter row together exceed the viewport —
+          which widens the document and drags the fixed bottom bar with it. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-hairline pb-5">
         <div className="flex items-center gap-5">
           <button
             type="button"

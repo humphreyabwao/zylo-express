@@ -78,23 +78,3 @@ export function Reveal({
     />
   );
 }
-
-/** Convenience wrapper that staggers each child by a fixed step. */
-export function RevealGroup({
-  children,
-  step = 90,
-  className,
-  ...props
-}: React.ComponentProps<"div"> & { step?: number }) {
-  return (
-    <div className={className} {...props}>
-      {React.Children.map(children, (child, index) =>
-        React.isValidElement(child) ? (
-          <Reveal delay={index * step}>{child}</Reveal>
-        ) : (
-          child
-        )
-      )}
-    </div>
-  );
-}

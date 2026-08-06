@@ -5,9 +5,9 @@ import {
   buildFacets,
   filterProducts,
   getCategories,
-  parseFilters,
   searchProducts,
 } from "@/lib/catalog";
+import { parseFilters } from "@/lib/filters";
 import { Button } from "@/components/ui/button";
 import { Breadcrumbs } from "@/components/catalog/catalog-page";
 import { CatalogToolbar } from "@/components/catalog/catalog-toolbar";
@@ -42,13 +42,16 @@ export default async function SearchPage({ searchParams }: PageProps) {
   const query = raw?.trim() ?? "";
 
   // Relevance ranking first, then the shopper's refinements on top of it.
-  const matches = query ? searchProducts(query, 60) : [];
+  const [matches, categories] = await Promise.all([
+    query ? searchProducts(query, 60) : Promise.resolve([]),
+    getCategories(),
+  ]);
+
   const filters = parseFilters(params);
   const products = query
     ? filterProducts(matches, { ...filters, query: undefined })
     : [];
-  const facets = buildFacets(matches);
-  const categories = getCategories();
+  const facets = await buildFacets(matches);
 
   return (
     <>
@@ -109,7 +112,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
                 </p>
               </div>
               <Button asChild>
-                <Link href="/collections/all">Browse everything</Link>
+                <Link href="/shop">Browse everything</Link>
               </Button>
             </div>
           )}

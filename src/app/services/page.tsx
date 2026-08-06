@@ -92,7 +92,7 @@ const SERVICES = [
       "No prices enclosed",
     ],
     image: "/media/collections/maison.jpg",
-    cta: { href: "/collections/all", label: "Find a gift" },
+    cta: { href: "/shop", label: "Find a gift" },
   },
 ];
 

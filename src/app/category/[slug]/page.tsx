@@ -7,8 +7,8 @@ import {
   getCategories,
   getCategoryBySlug,
   getProductsInCategory,
-  parseFilters,
 } from "@/lib/catalog";
+import { parseFilters } from "@/lib/filters";
 import {
   CatalogPage,
   RelatedLinks,
@@ -19,15 +19,16 @@ interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export function generateStaticParams() {
-  return getCategories().map((category) => ({ slug: category.slug }));
+export async function generateStaticParams() {
+  const categories = await getCategories();
+  return categories.map((category) => ({ slug: category.slug }));
 }
 
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const category = getCategoryBySlug(slug);
+  const category = await getCategoryBySlug(slug);
   if (!category) return { title: "Not found" };
 
   return {
@@ -47,15 +48,20 @@ export default async function CategoryPage({
   searchParams,
 }: PageProps) {
   const { slug } = await params;
-  const category = getCategoryBySlug(slug);
+  const category = await getCategoryBySlug(slug);
   if (!category) notFound();
 
-  const scope = getProductsInCategory(slug);
-  const filters = parseFilters(await searchParams);
-  const products = filterProducts(scope, filters);
-  const facets = buildFacets(scope);
+  const [scope, allCategories, resolvedSearchParams] = await Promise.all([
+    getProductsInCategory(slug),
+    getCategories(),
+    searchParams,
+  ]);
 
-  const siblings = getCategories()
+  const filters = parseFilters(resolvedSearchParams);
+  const products = filterProducts(scope, filters);
+  const facets = await buildFacets(scope);
+
+  const siblings = allCategories
     .filter((c) => c.slug !== slug)
     .map((c) => ({ label: c.name, href: `/category/${c.slug}` }));
 

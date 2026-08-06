@@ -10,6 +10,24 @@ export type Currency = "USD" | "EUR" | "GBP";
 
 export type OptionType = "color" | "size" | "material" | "text";
 
+/**
+ * A sourcing origin.
+ *
+ * ZYLO Express ships from many countries, so origin is merchandising
+ * information a shopper filters and decides on — not a footnote. Every product
+ * card surfaces it, which is why lead times live here rather than being
+ * inferred from the shipping method at checkout.
+ */
+export interface Country {
+  /** ISO 3166-1 alpha-2, uppercase. */
+  code: string;
+  name: string;
+  /** Emoji flag — renders everywhere without an image request. */
+  flag: string;
+  leadTimeMinDays: number;
+  leadTimeMaxDays: number;
+}
+
 export interface ProductImage {
   id: string;
   url: string;
@@ -70,7 +88,11 @@ export interface Product {
   details: string[];
   care: string[];
   composition: string;
+  /** Human-facing line, e.g. "Made in Florence, Italy". */
   origin: string;
+  /** ISO 3166-1 alpha-2. What the origin filter and card badge key on. */
+  originCountry: string;
+  originCity: string | null;
   categorySlug: string;
   collectionSlugs: string[];
   /** Denormalised from the default variant for fast list rendering. */
@@ -216,6 +238,8 @@ export type SortKey =
 export interface CatalogFilters {
   categories: string[];
   collections: string[];
+  /** ISO 3166-1 alpha-2 codes. */
+  countries: string[];
   colors: string[];
   sizes: string[];
   flags: ProductFlag[];
@@ -233,9 +257,16 @@ export interface FacetCount {
   hex?: string;
 }
 
+export interface CountryFacetCount extends FacetCount {
+  flag: string;
+  leadTimeMinDays: number;
+  leadTimeMaxDays: number;
+}
+
 export interface CatalogFacets {
   categories: FacetCount[];
   collections: FacetCount[];
+  countries: CountryFacetCount[];
   colors: FacetCount[];
   sizes: FacetCount[];
   flags: FacetCount[];

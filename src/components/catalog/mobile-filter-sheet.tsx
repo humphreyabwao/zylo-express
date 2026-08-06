@@ -1,7 +1,7 @@
 "use client";
 
 import type { CatalogFacets } from "@/lib/types";
-import { activeFilterCount } from "@/lib/catalog";
+import { activeFilterCount } from "@/lib/filters";
 import { useCatalogFilters } from "@/hooks/use-catalog-filters";
 import { useIsFiltersOpen, useUiStore } from "@/store/ui-store";
 import { Button } from "@/components/ui/button";

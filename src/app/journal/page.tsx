@@ -14,8 +14,8 @@ export const metadata: Metadata = {
   alternates: { canonical: "/journal" },
 };
 
-export default function JournalIndexPage() {
-  const [lead, ...rest] = getJournal();
+export default async function JournalIndexPage() {
+  const [lead, ...rest] = await getJournal();
 
   return (
     <>
