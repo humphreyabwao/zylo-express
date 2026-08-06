@@ -26,6 +26,20 @@ import { CacheTags, invalidateTags } from "@/lib/cache";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * An SSE handler is a request that deliberately never returns, and every
+ * serverless platform caps execution time. Declaring the ceiling makes the cut
+ * predictable instead of platform-defined: `EventSource` reconnects on its own
+ * (see `use-realtime.ts`), so a capped connection is a seam, not an outage.
+ *
+ * 60s sits inside the lowest Vercel plan limit. Every reconnect re-establishes
+ * a Supabase subscription, so a shorter window costs more, not less — raise
+ * this on a plan that permits it. If genuinely persistent connections ever
+ * matter more than the rest of the deployment story, this one route is the
+ * piece that wants a long-lived container rather than a function.
+ */
+export const maxDuration = 60;
+
 /** Only these may be subscribed to. Anything else is rejected. */
 const CHANNELS = {
   inventory: {

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { resolveSiteUrl } from "./site-url";
+
 /**
  * Validated server environment.
  *
@@ -49,7 +51,7 @@ export const env = {
     return optional("UPSTASH_REDIS_REST_TOKEN");
   },
   get siteUrl() {
-    return (process.env.SITE_URL || "http://localhost:3000").replace(/\/$/, "");
+    return resolveSiteUrl();
   },
 } as const;
 
