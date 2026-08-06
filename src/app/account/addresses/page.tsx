@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import { Plus } from "lucide-react";
+import { MapPin } from "lucide-react";
 
-import { DEMO_ADDRESSES } from "@/data/account";
-import { countryByCode } from "@/lib/validation";
-import { Button } from "@/components/ui/button";
+import { getAccountAddresses } from "@/lib/account";
+import { AddressBook } from "@/components/account/address-book";
 
 export const metadata: Metadata = {
   title: "Addresses",
@@ -11,88 +10,43 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function AddressesPage() {
+export default async function AddressesPage() {
+  const addresses = await getAccountAddresses();
+
   return (
     <div>
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="font-display text-2xl font-light">Addresses</h2>
-          <p className="mt-3 text-sm font-light text-muted-foreground">
-            Used at checkout and for arranging returns.
+          <p className="mt-3 max-w-md text-sm font-light leading-relaxed text-muted-foreground">
+            Used at checkout and for arranging returns. Your default is
+            pre-filled automatically.
           </p>
         </div>
-        <Button variant="outline" size="sm">
-          <Plus className="size-3.5" strokeWidth={1.5} />
-          Add
-        </Button>
       </div>
 
-      <ul className="mt-8 grid gap-6 sm:grid-cols-2">
-        {DEMO_ADDRESSES.map((address) => {
-          const country = countryByCode(address.country);
-
-          return (
-            <li key={address.id} className="flex flex-col border border-hairline p-6">
-              <div className="flex items-start justify-between gap-4">
-                <p className="eyebrow-sm text-foreground">{address.label}</p>
-                {address.isDefault && (
-                  <span className="eyebrow-sm text-champagne-dark">Default</span>
-                )}
-              </div>
-
-              <address className="mt-5 flex-1 text-sm font-light not-italic leading-relaxed text-muted-foreground">
-                <span className="block text-foreground">
-                  {address.firstName} {address.lastName}
-                </span>
-                {address.company && <>{address.company}<br /></>}
-                {address.line1}
-                <br />
-                {address.line2 && (
-                  <>
-                    {address.line2}
-                    <br />
-                  </>
-                )}
-                {address.city}, {address.region} {address.postalCode}
-                <br />
-                {country.name}
-                <br />
-                {address.phone}
-              </address>
-
-              <div className="mt-6 flex gap-4">
-                <button
-                  type="button"
-                  className="link-draw eyebrow-sm text-foreground"
-                >
-                  Edit
-                </button>
-                {!address.isDefault && (
-                  <>
-                    <button
-                      type="button"
-                      className="link-draw eyebrow-sm text-muted-foreground hover:text-foreground"
-                    >
-                      Make default
-                    </button>
-                    <button
-                      type="button"
-                      className="link-draw eyebrow-sm text-destructive"
-                    >
-                      Remove
-                    </button>
-                  </>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-
-      <p className="mt-8 text-xs font-light leading-relaxed text-muted-foreground">
-        Address management writes to the Supabase `addresses` table in the next
-        phase; the controls above are inert for now.
-      </p>
+      {addresses.length === 0 ? (
+        <div className="mt-8 border border-hairline px-8 py-16 text-center">
+          <MapPin
+            className="mx-auto size-7 text-champagne-dark"
+            strokeWidth={1}
+            aria-hidden="true"
+          />
+          <h3 className="mt-6 font-display text-xl font-light">
+            No addresses saved
+          </h3>
+          <p className="mx-auto mt-3 max-w-sm text-sm font-light leading-relaxed text-muted-foreground">
+            Add one now and checkout becomes a single step.
+          </p>
+          <div className="mt-8 flex justify-center">
+            <AddressBook addresses={addresses} />
+          </div>
+        </div>
+      ) : (
+        <div className="mt-8">
+          <AddressBook addresses={addresses} />
+        </div>
+      )}
     </div>
   );
 }

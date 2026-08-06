@@ -9,14 +9,22 @@ import {
 import { HELP_PAGES, LEGAL_PAGES } from "@/data/content";
 import { absoluteUrl } from "@/lib/utils";
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
+
+  const [allCategories, allCollections, allProducts, allArticles] =
+    await Promise.all([
+      getCategories(),
+      getCollections(),
+      getAllProducts(),
+      getJournal(),
+    ]);
 
   const statics: MetadataRoute.Sitemap = (
     [
       ["/", "daily", 1],
       ["/collections", "weekly", 0.9],
-      ["/collections/all", "daily", 0.9],
+      ["/shop", "daily", 1],
       ["/collections/new-in", "daily", 0.9],
       ["/journal", "weekly", 0.7],
       ["/about", "monthly", 0.6],
@@ -34,28 +42,28 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority,
   }));
 
-  const categories: MetadataRoute.Sitemap = getCategories().map((category) => ({
+  const categories: MetadataRoute.Sitemap = allCategories.map((category) => ({
     url: absoluteUrl(`/category/${category.slug}`),
     lastModified: now,
     changeFrequency: "daily",
     priority: 0.8,
   }));
 
-  const collections: MetadataRoute.Sitemap = getCollections().map((collection) => ({
+  const collections: MetadataRoute.Sitemap = allCollections.map((collection) => ({
     url: absoluteUrl(`/collections/${collection.slug}`),
     lastModified: now,
     changeFrequency: "weekly",
     priority: 0.8,
   }));
 
-  const products: MetadataRoute.Sitemap = getAllProducts().map((product) => ({
+  const products: MetadataRoute.Sitemap = allProducts.map((product) => ({
     url: absoluteUrl(`/products/${product.slug}`),
     lastModified: new Date(product.publishedAt),
     changeFrequency: "weekly",
     priority: 0.9,
   }));
 
-  const articles: MetadataRoute.Sitemap = getJournal().map((article) => ({
+  const articles: MetadataRoute.Sitemap = allArticles.map((article) => ({
     url: absoluteUrl(`/journal/${article.slug}`),
     lastModified: new Date(article.publishedAt),
     changeFrequency: "yearly",

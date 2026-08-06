@@ -6,7 +6,9 @@ import Link from "next/link";
 import { toast } from "sonner";
 
 import type { Product } from "@/lib/types";
-import { defaultVariant, flagLabel } from "@/lib/catalog";
+import { defaultVariant } from "@/lib/variants";
+import { flagLabel } from "@/lib/filters";
+import { getCountry } from "@/lib/countries";
 import { useCartStore } from "@/store/cart-store";
 import { useUiStore } from "@/store/ui-store";
 import { cn } from "@/lib/utils";
@@ -42,6 +44,7 @@ export function ProductCard({
   const colors = product.options.find((o) => o.type === "color")?.values ?? [];
   const soldOut = !product.available;
   const flag = product.flags[0];
+  const country = getCountry(product.originCountry);
 
   const handleQuickAdd = (event: React.MouseEvent) => {
     event.preventDefault();
@@ -132,7 +135,23 @@ export function ProductCard({
             {product.tagline}
           </p>
 
-          <div className="mt-auto flex items-center justify-between gap-4 pt-2.5">
+          {country && (
+            <p
+              className="flex items-center gap-1.5 pt-0.5 text-xs font-light text-muted-foreground"
+              // The flag is decoration; the country name carries the meaning,
+              // so screen readers get the sentence without the emoji name.
+              aria-label={`Ships from ${country.name}`}
+            >
+              <span aria-hidden="true" className="text-sm leading-none">
+                {country.flag}
+              </span>
+              <span>Ships from {country.name}</span>
+            </p>
+          )}
+
+          {/* Tight gap first: at two cards per row on a 320px screen the price
+              and a full set of swatches do not both fit at gap-4. */}
+          <div className="mt-auto flex items-center justify-between gap-2 pt-2.5 sm:gap-4">
             <Price
               amount={product.price}
               compareAt={product.compareAtPrice}

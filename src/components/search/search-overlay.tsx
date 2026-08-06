@@ -6,9 +6,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search, X } from "lucide-react";
 
-import { getCategories, searchProducts } from "@/lib/catalog";
 import { useIsSearchOpen, useUiStore } from "@/store/ui-store";
-import { formatPrice } from "@/lib/utils";
+import { cn, formatPrice } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 
 const SUGGESTIONS = [
@@ -20,12 +19,43 @@ const SUGGESTIONS = [
   "Noir Absolu",
 ];
 
-export function SearchOverlay() {
+/** The trimmed result shape returned by /api/search. */
+interface Suggestion {
+  id: string;
+  slug: string;
+  name: string;
+  tagline: string;
+  price: number;
+  currency: string;
+  originCountry: string;
+  image: { url: string; alt: string } | null;
+}
+
+export interface SearchOverlayProps {
+  /**
+   * Fetched on the server and passed down. Reading the catalogue here would
+   * pull it into the client bundle, which is the whole reason search moved to
+   * a route handler.
+   */
+  categories: { slug: string; name: string }[];
+}
+
+export function SearchOverlay({ categories }: SearchOverlayProps) {
   const open = useIsSearchOpen();
   const closeOverlay = useUiStore((s) => s.closeOverlay);
   const router = useRouter();
 
   const [query, setQuery] = React.useState("");
+  /**
+   * Results stored together with the query that produced them. Comparing that
+   * query against the current input makes "are these results still valid?" a
+   * derived value, so nothing has to be cleared imperatively when the user
+   * types or deletes — and stale results can never flash for a newer query.
+   */
+  const [data, setData] = React.useState<{
+    query: string;
+    results: Suggestion[];
+  }>({ query: "", results: [] });
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   // Reset between openings so the panel never reopens mid-search. Done during
@@ -34,6 +64,8 @@ export function SearchOverlay() {
   const [wasOpen, setWasOpen] = React.useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
+    // Clearing the query is enough: results are derived from whether they
+    // match the current input, so stale ones stop showing immediately.
     if (open) setQuery("");
   }
 
@@ -44,14 +76,49 @@ export function SearchOverlay() {
     return () => clearTimeout(focus);
   }, [open]);
 
-  const results = React.useMemo(
-    () => (query.trim().length > 1 ? searchProducts(query, 6) : []),
-    [query]
-  );
-
-  const categories = React.useMemo(() => getCategories().slice(0, 6), []);
   const trimmed = query.trim();
-  const noResults = trimmed.length > 1 && results.length === 0;
+
+  /**
+   * Debounced fetch against /api/search.
+   *
+   * The AbortController is not just tidiness: without it a slow response for
+   * "au" can land after a fast one for "aurelia" and overwrite the newer
+   * results. Aborting the previous request makes the last keystroke win.
+   */
+  React.useEffect(() => {
+    if (trimmed.length < 2) return;
+
+    const controller = new AbortController();
+
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `/api/search?q=${encodeURIComponent(trimmed)}&limit=6`,
+          { signal: controller.signal }
+        );
+        if (!response.ok) throw new Error(`Search failed: ${response.status}`);
+
+        const payload = (await response.json()) as { results: Suggestion[] };
+        setData({ query: trimmed, results: payload.results ?? [] });
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") {
+          console.error("[search]", error);
+          setData({ query: trimmed, results: [] });
+        }
+      }
+    }, 180);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [trimmed]);
+
+  // Derived, not stored: results only count when they match what is typed now.
+  const settled = data.query === trimmed;
+  const results = settled ? data.results : [];
+  const searching = trimmed.length > 1 && !settled;
+  const noResults = trimmed.length > 1 && settled && results.length === 0;
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -94,7 +161,24 @@ export function SearchOverlay() {
             </button>
           </form>
 
-          <div className="mt-2 h-px w-full bg-hairline" />
+          {/* The rule doubles as the loading indicator: a hairline that fills
+              while a request is in flight, rather than a spinner. */}
+          <div className="mt-2 h-px w-full overflow-hidden bg-hairline">
+            <span
+              className={cn(
+                "block h-full w-full origin-left bg-champagne-dark transition-transform duration-500 ease-out",
+                searching ? "scale-x-100" : "scale-x-0"
+              )}
+              aria-hidden="true"
+            />
+          </div>
+          <span role="status" aria-live="polite" className="sr-only">
+            {searching
+              ? "Searching"
+              : trimmed.length > 1
+                ? `${results.length} results for ${trimmed}`
+                : ""}
+          </span>
 
           {results.length > 0 ? (
             <div className="mt-10">
@@ -110,13 +194,15 @@ export function SearchOverlay() {
                       className="group/result flex items-center gap-4"
                     >
                       <div className="relative aspect-3/4 w-16 shrink-0 overflow-hidden bg-secondary">
-                        <Image
-                          src={product.images[0].url}
-                          alt={product.images[0].alt}
-                          fill
-                          sizes="4rem"
-                          className="object-cover transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover/result:scale-105"
-                        />
+                        {product.image && (
+                          <Image
+                            src={product.image.url}
+                            alt={product.image.alt}
+                            fill
+                            sizes="4rem"
+                            className="object-cover transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover/result:scale-105"
+                          />
+                        )}
                       </div>
                       <div className="min-w-0">
                         <p className="truncate font-display text-base font-normal">
@@ -125,9 +211,9 @@ export function SearchOverlay() {
                         <p className="mt-0.5 truncate text-xs font-light text-muted-foreground">
                           {product.tagline}
                         </p>
-                        <p className="mt-1 font-display text-sm font-light tabular-nums">
+                        <p className="mt-1 font-display text-sm font-semibold tabular-nums">
                           {formatPrice(product.price, {
-                            currency: product.currency,
+                            currency: product.currency as "USD" | "EUR" | "GBP",
                           })}
                         </p>
                       </div>

@@ -1,70 +1,88 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut } from "lucide-react";
-import { toast } from "sonner";
+import {
+  Heart,
+  LayoutGrid,
+  LogOut,
+  MapPin,
+  Package,
+  Settings,
+  type LucideIcon,
+} from "lucide-react";
 
+import { signOut } from "@/app/actions/auth";
 import { cn } from "@/lib/utils";
 
-const LINKS = [
-  { href: "/account", label: "Overview" },
-  { href: "/account/orders", label: "Orders" },
-  { href: "/account/wishlist", label: "Saved Items" },
-  { href: "/account/addresses", label: "Addresses" },
-  { href: "/account/settings", label: "Settings" },
+const LINKS: { href: string; label: string; icon: LucideIcon }[] = [
+  { href: "/account", label: "Overview", icon: LayoutGrid },
+  { href: "/account/orders", label: "Orders", icon: Package },
+  { href: "/account/wishlist", label: "Saved", icon: Heart },
+  { href: "/account/addresses", label: "Addresses", icon: MapPin },
+  { href: "/account/settings", label: "Settings", icon: Settings },
 ];
 
 export function AccountNav() {
   const pathname = usePathname();
+  const [signingOut, startSignOut] = React.useTransition();
 
   return (
     <nav aria-label="Account">
-      {/* Horizontal on mobile, stacked from lg */}
-      <ul className="no-scrollbar -mx-5 flex gap-6 overflow-x-auto px-5 lg:mx-0 lg:flex-col lg:gap-0 lg:px-0">
+      {/* Scrollable row on mobile, stacked rail from lg. Icons earn their
+          place on narrow screens where labels get cramped. */}
+      <ul className="no-scrollbar -mx-5 flex gap-1 overflow-x-auto px-5 lg:mx-0 lg:flex-col lg:gap-0.5 lg:px-0">
         {LINKS.map((link) => {
           const active =
             link.href === "/account"
               ? pathname === "/account"
               : pathname.startsWith(link.href);
+          const Icon = link.icon;
 
           return (
-            <li key={link.href} className="shrink-0 lg:border-b lg:border-hairline">
+            <li key={link.href} className="shrink-0">
               <Link
                 href={link.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative block whitespace-nowrap py-4 eyebrow-sm transition-colors duration-400",
+                  "flex items-center gap-2.5 whitespace-nowrap px-3.5 py-3 eyebrow-sm transition-colors duration-400 lg:px-4",
                   active
-                    ? "text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-secondary text-foreground"
+                    : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                 )}
               >
-                {link.label}
-                <span
+                <Icon
                   className={cn(
-                    "absolute inset-x-0 bottom-0 h-px origin-left bg-foreground transition-transform duration-600 ease-[cubic-bezier(0.16,1,0.3,1)] lg:hidden",
-                    active ? "scale-x-100" : "scale-x-0"
+                    "size-4 shrink-0",
+                    active ? "text-champagne-dark" : ""
                   )}
+                  strokeWidth={1.25}
                 />
+                {link.label}
               </Link>
             </li>
           );
         })}
 
-        <li className="shrink-0 lg:mt-6">
-          <button
-            type="button"
-            onClick={() =>
-              toast("Sign-out is not connected yet", {
-                description: "Supabase Auth is wired in the next phase.",
-              })
-            }
-            className="flex items-center gap-2.5 whitespace-nowrap py-4 eyebrow-sm text-muted-foreground transition-colors duration-400 hover:text-foreground lg:py-0"
+        <li className="shrink-0 lg:mt-8 lg:border-t lg:border-hairline lg:pt-4">
+          {/*
+            A form posting to a Server Action, not a fetch. Sign-out clears an
+            httpOnly cookie, which only the server can do, and this keeps
+            working if JavaScript fails to load.
+          */}
+          <form
+            action={(formData) => startSignOut(() => signOut(formData))}
           >
-            <LogOut className="size-3.5" strokeWidth={1.25} />
-            Sign out
-          </button>
+            <button
+              type="submit"
+              disabled={signingOut}
+              className="flex w-full items-center gap-2.5 whitespace-nowrap px-3.5 py-3 eyebrow-sm text-muted-foreground transition-colors duration-400 hover:text-foreground disabled:opacity-50 lg:px-4"
+            >
+              <LogOut className="size-4 shrink-0" strokeWidth={1.25} />
+              {signingOut ? "Signing out…" : "Sign out"}
+            </button>
+          </form>
         </li>
       </ul>
     </nav>

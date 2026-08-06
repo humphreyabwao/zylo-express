@@ -7,6 +7,7 @@ import { AnnouncementBar } from "@/components/layout/announcement-bar";
 import { Header } from "@/components/layout/header";
 import { CheckoutHeader } from "@/components/layout/checkout-header";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { BottomNav } from "@/components/layout/bottom-nav";
 import { Footer } from "@/components/layout/footer";
 import { CartDrawer } from "@/components/cart/cart-drawer";
 import { SearchOverlay } from "@/components/search/search-overlay";
@@ -19,7 +20,14 @@ const MINIMAL_ROUTES = ["/checkout"];
  * still rendered on the server and passed straight through, so no page code
  * is pulled into the client bundle by this.
  */
-export function SiteChrome({ children }: { children: React.ReactNode }) {
+export function SiteChrome({
+  children,
+  categories,
+}: {
+  children: React.ReactNode;
+  /** Server-fetched in the root layout; forwarded to the search overlay. */
+  categories: { slug: string; name: string }[];
+}) {
   const pathname = usePathname();
   const minimal = MINIMAL_ROUTES.some((route) => pathname.startsWith(route));
 
@@ -47,9 +55,12 @@ export function SiteChrome({ children }: { children: React.ReactNode }) {
 
       {minimal ? <CheckoutFooter /> : <Footer />}
 
+      {/* Checkout keeps its distraction-free frame — no way out but forward. */}
+      {!minimal && <BottomNav />}
+
       <MobileNav />
       <CartDrawer />
-      <SearchOverlay />
+      <SearchOverlay categories={categories.slice(0, 6)} />
     </>
   );
 }

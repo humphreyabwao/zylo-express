@@ -204,7 +204,7 @@ export function ConfirmationView() {
           <Link href="/account/orders">Track your order</Link>
         </Button>
         <Button asChild size="lg" variant="outline">
-          <Link href="/collections/all">Continue shopping</Link>
+          <Link href="/shop">Continue shopping</Link>
         </Button>
       </div>
 

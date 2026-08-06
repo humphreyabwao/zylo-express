@@ -12,8 +12,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function CartPage() {
-  const suggestions = getFeaturedProducts(8);
+export default async function CartPage() {
+  const suggestions = await getFeaturedProducts(8);
 
   return (
     <>
@@ -35,7 +35,7 @@ export default function CartPage() {
           <SectionHeading
             eyebrow="Also considered"
             title="Pieces that pair well"
-            link={{ href: "/collections/all", label: "Shop all" }}
+            link={{ href: "/shop", label: "Shop all" }}
           />
           <div className="mt-14">
             <ProductRail products={suggestions} />

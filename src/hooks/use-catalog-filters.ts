@@ -3,10 +3,10 @@
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { DEFAULT_FILTERS, parseFilters, serialiseFilters } from "@/lib/catalog";
+import { DEFAULT_FILTERS, parseFilters, serialiseFilters } from "@/lib/filters";
 import type { CatalogFilters, ProductFlag, SortKey } from "@/lib/types";
 
-type ListKey = "categories" | "collections" | "colors" | "sizes";
+type ListKey = "categories" | "collections" | "countries" | "colors" | "sizes";
 
 /**
  * The URL is the single source of truth for refinements — shoppers share and

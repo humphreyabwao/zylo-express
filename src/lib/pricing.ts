@@ -3,7 +3,7 @@ import {
   PROMOTIONS,
   SHIPPING_METHODS,
   TAX_RATE,
-} from "@/data/catalog";
+} from "@/data/commerce";
 import type {
   CartLine,
   CartTotals,
@@ -29,7 +29,7 @@ export interface PriceInput {
   currency?: Currency;
 }
 
-export function findPromotion(code?: string | null): PromotionCode | undefined {
+function findPromotion(code?: string | null): PromotionCode | undefined {
   if (!code) return undefined;
   const normalised = code.trim().toUpperCase();
   return PROMOTIONS.find((p) => p.code === normalised);
@@ -41,7 +41,7 @@ export function findShippingMethod(id?: ShippingSpeed): ShippingMethod {
   );
 }
 
-export function lineSubtotal(line: CartLine): number {
+function lineSubtotal(line: CartLine): number {
   return line.price * line.quantity;
 }
 
@@ -139,4 +139,8 @@ export function freeShippingProgress(subtotal: number): number {
   return Math.min(1, subtotal / FREE_SHIPPING_THRESHOLD);
 }
 
-export { SHIPPING_METHODS, FREE_SHIPPING_THRESHOLD, TAX_RATE };
+// The checkout's shipping picker needs the list alongside these helpers, so it
+// stays. `FREE_SHIPPING_THRESHOLD` and `TAX_RATE` are not re-exported: they are
+// inputs to the functions above, and a caller reaching for the raw numbers is
+// about to reimplement `computeTotals` slightly differently.
+export { SHIPPING_METHODS };

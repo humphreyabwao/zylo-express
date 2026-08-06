@@ -92,7 +92,7 @@ export function CartView() {
         </Button>
 
         <Button asChild block variant="ghost" className="mt-2">
-          <Link href="/collections/all">Continue shopping</Link>
+          <Link href="/shop">Continue shopping</Link>
         </Button>
 
         <ul className="mt-8 space-y-3 text-xs font-light leading-relaxed text-muted-foreground">

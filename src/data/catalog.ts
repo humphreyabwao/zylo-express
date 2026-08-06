@@ -1,3 +1,4 @@
+import { COUNTRY_BY_NAME } from "@/lib/countries";
 import type {
   Category,
   Collection,
@@ -9,8 +10,6 @@ import type {
   ProductOption,
   ProductOptionValue,
   ProductVariant,
-  PromotionCode,
-  ShippingMethod,
 } from "@/lib/types";
 
 /**
@@ -22,6 +21,38 @@ import type {
  */
 
 const CURRENCY: Currency = "USD";
+
+/* --------------------------------------------------------------- countries */
+
+export { COUNTRIES } from "@/lib/countries";
+
+/**
+ * Splits "Made in Florence, Italy" into its city and ISO country code.
+ *
+ * Throws on an unmapped country rather than silently defaulting: a product
+ * that cannot be filtered by origin is a bug on a storefront whose whole
+ * proposition is knowing where things ship from.
+ */
+function parseOrigin(label: string): { city: string | null; country: string } {
+  const segments = label.split(",").map((s) => s.trim());
+  const countryName = segments[segments.length - 1];
+  const code = COUNTRY_BY_NAME[countryName];
+
+  if (!code) {
+    throw new Error(
+      `Unmapped origin country ${JSON.stringify(countryName)} in ${JSON.stringify(label)}. ` +
+        `Add it to COUNTRY_BY_NAME and COUNTRIES in src/data/catalog.ts.`
+    );
+  }
+
+  // Strip the leading verb: "Made in Florence" → "Florence".
+  const city =
+    segments.length > 1
+      ? segments[0].replace(/^(Made|Assembled|Poured|Printed|Set|Blended|Composed|Woven|Finished)\s+(in|and bottled in)\s+/i, "").trim()
+      : null;
+
+  return { city: city || null, country: code };
+}
 
 /* ------------------------------------------------------------ swatch atlas */
 
@@ -978,7 +1009,7 @@ const SEEDS: Seed[] = [
     ],
     care: ["Hand wash cold or dry clean.", "Line dry away from direct sun."],
     composition: "100% silk",
-    origin: "Made in Como, Italy",
+    origin: "Made in Jaipur, India",
     category: "maison",
     collections: ["the-atelier-series"],
     price: 84000,
@@ -1074,7 +1105,7 @@ const SEEDS: Seed[] = [
       "Never submerge; wipe with a barely damp cloth.",
     ],
     composition: "Aluminium; magnesium; lambskin; OFC copper",
-    origin: "Assembled in Yamagata, Japan",
+    origin: "Assembled in Shenzhen, China",
     category: "electronics",
     collections: ["the-obsidian-edit", "hands-of-the-maison"],
     price: 128000,
@@ -1173,7 +1204,7 @@ const SEEDS: Seed[] = [
       "Store in the case — the battery prefers it.",
     ],
     composition: "Aluminium; medical-grade silicone",
-    origin: "Assembled in Yamagata, Japan",
+    origin: "Assembled in Shenzhen, China",
     category: "electronics",
     collections: [],
     price: 38000,
@@ -1207,7 +1238,7 @@ const SEEDS: Seed[] = [
     ],
     composition:
       "Camellia oleifera, Sclerocarya birrea, Argania spinosa, Simmondsia chinensis",
-    origin: "Blended and bottled in Grasse, France",
+    origin: "Blended in Seoul, South Korea",
     category: "hair",
     collections: ["savoir-faire"],
     price: 9800,
@@ -1306,7 +1337,7 @@ const SEEDS: Seed[] = [
       "Clean with saddle soap; condition twice a year.",
     ],
     composition: "Calfskin upper; vegetable-tanned lining; rubber cup sole",
-    origin: "Made in Toscana, Italy",
+    origin: "Made in Bình Dương, Vietnam",
     category: "footwear",
     collections: ["hands-of-the-maison"],
     price: 92000,
@@ -1462,6 +1493,7 @@ function buildProduct(seed: Seed): Product {
   const images = buildImages(seed);
   const options = buildOptions(seed);
   const variants = buildVariants(seed, images);
+  const origin = parseOrigin(seed.origin);
   reconcileAvailability(options, variants);
 
   const flags = [...(seed.flags ?? [])];
@@ -1487,6 +1519,8 @@ function buildProduct(seed: Seed): Product {
     care: seed.care,
     composition: seed.composition,
     origin: seed.origin,
+    originCountry: origin.country,
+    originCity: origin.city,
     categorySlug: seed.category,
     collectionSlugs: seed.collections,
     price: seed.price,
@@ -1649,58 +1683,8 @@ export const JOURNAL: EditorialArticle[] = [
   },
 ];
 
-/* -------------------------------------------------------- commerce config */
-
-export const SHIPPING_METHODS: ShippingMethod[] = [
-  {
-    id: "standard",
-    name: "Complimentary Delivery",
-    description: "Signature required on arrival.",
-    price: 0,
-    estimate: "3–5 business days",
-  },
-  {
-    id: "express",
-    name: "Express",
-    description: "Priority handling, insured in transit.",
-    price: 3500,
-    estimate: "1–2 business days",
-  },
-  {
-    id: "same-day",
-    name: "Same-Day Courier",
-    description: "Selected metropolitan areas. Ordered before 12:00.",
-    price: 9500,
-    estimate: "Today, before 20:00",
-  },
-];
-
-export const PROMOTIONS: PromotionCode[] = [
-  {
-    code: "MAISON10",
-    label: "10% — Maison welcome",
-    kind: "percentage",
-    value: 10,
-    minimumSubtotal: 0,
-  },
-  {
-    code: "ATELIER250",
-    label: "$250 off orders over $2,500",
-    kind: "fixed",
-    value: 25000,
-    minimumSubtotal: 250000,
-  },
-  {
-    code: "PRIVATE",
-    label: "Complimentary express delivery",
-    kind: "free-shipping",
-    value: 0,
-    minimumSubtotal: 0,
-  },
-];
-
-/** Orders above this threshold ship free on the standard service. */
-export const FREE_SHIPPING_THRESHOLD = 50000;
-
-/** Flat rate applied at checkout; a real tax engine replaces this later. */
-export const TAX_RATE = 0.0825;
+/* Shipping rates, promotions and tax live in `@/data/commerce`, and are not
+ * re-exported here. Importing them through this module would drag the whole
+ * PRODUCTS array into any bundle that only wanted a shipping rate — which is
+ * the reason they were split out in the first place. Nothing imports them
+ * from here any more. */

@@ -20,6 +20,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 export function MobileNav() {
   const open = useIsNavOpen();
@@ -121,6 +122,9 @@ export function MobileNav() {
                 <MapPin className="size-4" strokeWidth={1.25} />
                 Find a Boutique
               </Link>
+            </li>
+            <li>
+              <ThemeToggle variant="row" />
             </li>
           </ul>
         </nav>

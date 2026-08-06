@@ -11,6 +11,7 @@ import { useUiStore } from "@/store/ui-store";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/logo";
 import { MegaMenu } from "@/components/layout/mega-menu";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 /** Routes whose hero sits under a transparent header. */
 const TRANSPARENT_ROUTES = ["/"];
@@ -131,6 +132,10 @@ export function Header() {
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1">
+          {/* Desktop only: below lg the hamburger drawer carries it instead,
+              so the two never both appear. */}
+          <ThemeToggle className="hidden lg:grid" />
+
           <button
             type="button"
             onClick={openSearch}

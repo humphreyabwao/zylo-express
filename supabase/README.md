@@ -1,0 +1,176 @@
+# ZYLO Express — Supabase setup
+
+The app runs today without any of this: when Supabase is unreachable or
+unconfigured, every catalogue read falls back to the seed data in
+`src/data/catalog.ts`. Follow these steps to switch it onto the real database.
+
+## 1. Environment
+
+```bash
+cp .env.example .env.local
+```
+
+Fill in the values from **Dashboard → Project Settings → API**.
+
+Nothing in that file is prefixed `NEXT_PUBLIC_`, and it must stay that way —
+that prefix is what inlines a value into the browser bundle. Every Supabase
+call in this app is made server-side precisely so no key needs to ship.
+
+## 2. Apply the migrations
+
+**This step cannot be automated from the app**: creating tables is DDL, and
+neither the publishable nor the secret key can run DDL through PostgREST. It
+needs either the database password or a Supabase access token.
+
+### Option A — SQL Editor (no tooling)
+
+Open **Dashboard → SQL Editor** and run each file in `migrations/` in filename
+order. They are numbered and must be run in sequence:
+
+| Order | File | What it creates |
+|---|---|---|
+| 1 | `20260806000001_catalog.sql` | countries, categories, collections, products, images, options, variants, full-text search, triggers |
+| 2 | `20260806000002_commerce.sql` | profiles, addresses, orders, order items, wishlist, promotions, reviews |
+| 3 | `20260806000003_content.sql` | articles, content pages, site settings, newsletter, contact inbox |
+| 4 | `20260806000004_rls.sql` | Row Level Security on every table |
+| 5 | `20260806000005_storage_and_rpc.sql` | storage buckets and policies, search/facet/inventory RPCs |
+| 6 | `20260806000006_oauth_profiles.sql` | profile trigger that understands OAuth metadata, plus a backfill |
+
+### Option B — Supabase CLI
+
+```bash
+npx supabase link --project-ref gwddqngawlooldswsxey   # asks for the DB password
+npx supabase db push
+```
+
+## 3. Seed the catalogue
+
+```bash
+npm run seed            # data only
+npm run seed -- --media # also upload public/media to Storage (~130 images)
+```
+
+Idempotent — every write is an upsert on a natural key, so re-running it is
+safe. It uses the secret key and bypasses RLS, which is why it only ever runs
+from a terminal.
+
+## 4. Verify
+
+```bash
+npm run build
+npm start
+```
+
+`/shop` should show the same catalogue, now served from Postgres. If a query
+fails the app logs `[catalog] … using seed data` and keeps rendering, so check
+the server console rather than trusting the page.
+
+## 5. Sign in with Google
+
+The storefront offers two ways in — email/password and Google — and both end
+at the same place: `/api/auth/callback` exchanges a one-time code for an
+httpOnly session cookie. Nothing below puts a credential in this repository;
+the Google client secret lives in the Supabase dashboard.
+
+### a. Google Cloud Console
+
+**APIs & Services → Credentials → Create OAuth client ID → Web application.**
+
+Authorised redirect URI — this is Supabase's callback, *not* ours:
+
+```
+https://<PROJECT_REF>.supabase.co/auth/v1/callback
+```
+
+That one URI covers every environment. Our own origins are allow-listed in
+Supabase (step c), not here, because the browser never talks to Google from
+our domain — the flow is Google → Supabase → us.
+
+You will also need an OAuth consent screen. For a public storefront that means
+submitting it for verification; until then only test users you list can sign
+in, which is the usual reason "it works for me and nobody else".
+
+### b. Enable the provider
+
+**Supabase → Authentication → Providers → Google.** Enable it and paste the
+client ID and client secret.
+
+### c. URL configuration
+
+**Supabase → Authentication → URL Configuration.**
+
+- **Site URL** — your production origin, e.g. `https://zylo.example.com`.
+- **Redirect URLs** — an allow-list. Supabase rejects any `redirect_to` that
+  does not match, and the rejection surfaces as a failed sign-in rather than a
+  useful error, so add every origin you actually use:
+
+```
+https://zylo.example.com/api/auth/callback
+http://localhost:3000/api/auth/callback
+```
+
+### d. Keep `SITE_URL` in step
+
+`SITE_URL` is what builds the `redirect_to` handed to Supabase. If it disagrees
+with the deployed origin, Google returns to the wrong host — or Supabase
+refuses the request because the URL is not in the allow-list above. Set it per
+environment, with no trailing slash.
+
+### Account linking
+
+A customer who registered with an email and password and later clicks
+"Sign in with Google" on the same verified address is linked to the **same**
+user by Supabase — one account, one order history, either door. It relies on
+Google having verified the address, which it does for ordinary Gmail accounts.
+
+Because they are one user, the profile row is created once, by the trigger in
+migration 6. That trigger reads `given_name`/`family_name`/`full_name` as well
+as the `first_name`/`last_name` our own form writes, so a Google customer's
+name is populated rather than left null — see the migration for why the
+original version got this wrong.
+
+Marketing consent is deliberately **not** inferred for OAuth sign-ups: Google
+was never asked, so the profile defaults to opted out and the customer opts in
+from account settings.
+
+## 6. Edge Functions (optional)
+
+```bash
+npx supabase functions deploy create-order
+```
+
+`create-order` recomputes every price from the catalogue and claims stock via
+`reserve_inventory`, whose conditional `UPDATE` is what stops two simultaneous
+checkouts overselling the last unit. The client never sends prices.
+
+## 7. Redis (optional, recommended in production)
+
+Create an Upstash Redis database and set `UPSTASH_REDIS_REST_URL` and
+`UPSTASH_REDIS_REST_TOKEN`. Without them the cache and rate limiter fall back
+to an in-process store, which is per-instance — fine locally, not a real limit
+across serverless instances.
+
+---
+
+## Making yourself an admin
+
+Catalogue writes are staff-only. After signing up, promote your account from
+the SQL Editor:
+
+```sql
+update public.profiles set role = 'admin' where email = 'you@example.com';
+```
+
+`public.is_admin()` backs every write policy, so the future admin dashboard
+authenticates through exactly this and needs no new grants.
+
+## Security notes
+
+- **RLS is the boundary, not key secrecy.** The publishable key is designed to
+  be public; it is kept server-side here as defence in depth, but the policies
+  in `20260806000004_rls.sql` are what actually protect the data.
+- **The secret key bypasses RLS entirely.** It is only used by the seed script,
+  the realtime proxy, and order creation. `import "server-only"` makes a Client
+  Component import of it a build error.
+- **Rotate the keys** if they have ever been pasted into a chat, a ticket, or a
+  shared terminal. Dashboard → Project Settings → API → Rotate.

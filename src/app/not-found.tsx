@@ -4,8 +4,8 @@ import { getCategories } from "@/lib/catalog";
 import { Button } from "@/components/ui/button";
 import { Monogram } from "@/components/brand/logo";
 
-export default function NotFound() {
-  const categories = getCategories().slice(0, 6);
+export default async function NotFound() {
+  const categories = (await getCategories()).slice(0, 6);
 
   return (
     <section className="container-shell flex min-h-[70svh] flex-col items-center justify-center py-24 text-center">
@@ -24,7 +24,7 @@ export default function NotFound() {
 
       <div className="mt-10 flex flex-wrap justify-center gap-4">
         <Button asChild size="lg">
-          <Link href="/collections/all">Browse the collection</Link>
+          <Link href="/shop">Browse the collection</Link>
         </Button>
         <Button asChild size="lg" variant="outline">
           <Link href="/help/contact">Speak with an advisor</Link>

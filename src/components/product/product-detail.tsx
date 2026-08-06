@@ -6,12 +6,8 @@ import { Check, ChevronRight, Truck } from "lucide-react";
 import { toast } from "sonner";
 
 import type { Product } from "@/lib/types";
-import {
-  availableValuesFor,
-  defaultVariant,
-  findVariant,
-  flagLabel,
-} from "@/lib/catalog";
+import { availableValuesFor, defaultVariant, findVariant } from "@/lib/variants";
+import { flagLabel } from "@/lib/filters";
 import { useCartStore } from "@/store/cart-store";
 import { useUiStore } from "@/store/ui-store";
 import { cn, formatPrice } from "@/lib/utils";

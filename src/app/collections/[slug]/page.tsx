@@ -4,13 +4,12 @@ import { notFound } from "next/navigation";
 import {
   buildFacets,
   filterProducts,
-  getAllProducts,
   getCollectionBySlug,
   getCollections,
   getNewArrivals,
   getProductsInCollection,
-  parseFilters,
 } from "@/lib/catalog";
+import { parseFilters } from "@/lib/filters";
 import type { Product } from "@/lib/types";
 import {
   CatalogPage,
@@ -28,14 +27,8 @@ interface PageProps {
  * refinement surface.
  */
 const SYNTHETIC = {
-  all: {
-    eyebrow: "The complete offering",
-    title: "Everything we make",
-    description:
-      "Twenty-four objects across eight disciplines. Small by design — we would rather make one bag properly than five quickly.",
-    image: "/media/campaign/feature-wide.jpg",
-    resolve: () => getAllProducts(),
-  },
+  // `all` used to live here too. It now has its own route at /shop — one
+  // listing per URL, rather than two pages indexing the same products.
   "new-in": {
     eyebrow: "Just arrived",
     title: "New to the maison",
@@ -51,14 +44,15 @@ const SYNTHETIC = {
     title: string;
     description: string;
     image: string;
-    resolve: () => Product[];
+    resolve: () => Promise<Product[]>;
   }
 >;
 
-export function generateStaticParams() {
+export async function generateStaticParams() {
+  const collections = await getCollections();
   return [
     ...Object.keys(SYNTHETIC).map((slug) => ({ slug })),
-    ...getCollections().map((collection) => ({ slug: collection.slug })),
+    ...collections.map((collection) => ({ slug: collection.slug })),
   ];
 }
 
@@ -77,7 +71,7 @@ export async function generateMetadata({
     };
   }
 
-  const collection = getCollectionBySlug(slug);
+  const collection = await getCollectionBySlug(slug);
   if (!collection) return { title: "Not found" };
 
   return {
@@ -100,14 +94,18 @@ export default async function CollectionPage({
   const filters = parseFilters(await searchParams);
 
   const synthetic = SYNTHETIC[slug as keyof typeof SYNTHETIC];
-  const collection = synthetic ? undefined : getCollectionBySlug(slug);
+  const collection = synthetic ? undefined : await getCollectionBySlug(slug);
   if (!synthetic && !collection) notFound();
 
-  const scope = synthetic ? synthetic.resolve() : getProductsInCollection(slug);
-  const products = filterProducts(scope, filters);
-  const facets = buildFacets(scope);
+  const [scope, allCollections] = await Promise.all([
+    synthetic ? synthetic.resolve() : getProductsInCollection(slug),
+    getCollections(),
+  ]);
 
-  const siblings = getCollections()
+  const products = filterProducts(scope, filters);
+  const facets = await buildFacets(scope);
+
+  const siblings = allCollections
     .filter((c) => c.slug !== slug)
     .map((c) => ({ label: c.name, href: `/collections/${c.slug}` }));
 

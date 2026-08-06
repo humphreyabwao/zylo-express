@@ -14,15 +14,16 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-export function generateStaticParams() {
-  return getJournal().map((article) => ({ slug: article.slug }));
+export async function generateStaticParams() {
+  const articles = await getJournal();
+  return articles.map((article) => ({ slug: article.slug }));
 }
 
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const article = getArticleBySlug(slug);
+  const article = await getArticleBySlug(slug);
   if (!article) return { title: "Not found" };
 
   return {
@@ -42,10 +43,12 @@ export async function generateMetadata({
 
 export default async function ArticlePage({ params }: PageProps) {
   const { slug } = await params;
-  const article = getArticleBySlug(slug);
+  const article = await getArticleBySlug(slug);
   if (!article) notFound();
 
-  const more = getJournal()
+  const featured = await getFeaturedProducts(8);
+
+  const more = (await getJournal())
     .filter((a) => a.slug !== slug)
     .slice(0, 3);
 
@@ -178,10 +181,10 @@ export default async function ArticlePage({ params }: PageProps) {
         <SectionHeading
           eyebrow="From the collection"
           title="Pieces mentioned in the journal"
-          link={{ href: "/collections/all", label: "Shop all" }}
+          link={{ href: "/shop", label: "Shop all" }}
         />
         <div className="mt-14">
-          <ProductRail products={getFeaturedProducts(8)} />
+          <ProductRail products={featured} />
         </div>
       </section>
     </>

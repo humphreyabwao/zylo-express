@@ -9,6 +9,6 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function WishlistPage() {
-  return <WishlistView products={getAllProducts()} />;
+export default async function WishlistPage() {
+  return <WishlistView products={await getAllProducts()} />;
 }

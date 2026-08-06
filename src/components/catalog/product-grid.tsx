@@ -17,7 +17,7 @@ export function ProductGrid({
   products,
   className,
   columns = 3,
-  emptyAction = { href: "/collections/all", label: "Browse everything" },
+  emptyAction = { href: "/shop", label: "Browse everything" },
 }: ProductGridProps) {
   if (products.length === 0) {
     return (
