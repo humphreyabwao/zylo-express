@@ -16,6 +16,16 @@ import { SearchOverlay } from "@/components/search/search-overlay";
 const MINIMAL_ROUTES = ["/checkout"];
 
 /**
+ * Routes that render with no storefront frame whatsoever.
+ *
+ * The admin portal brings its own shell, type scale and navigation. Beyond
+ * looking wrong, inheriting the storefront chrome would mount the cart drawer,
+ * search overlay and mobile nav inside the dashboard — shopper state and
+ * shopper keyboard shortcuts in an operator tool.
+ */
+const BARE_ROUTES = ["/admin"];
+
+/**
  * Client boundary only so the frame can react to the route. `children` is
  * still rendered on the server and passed straight through, so no page code
  * is pulled into the client bundle by this.
@@ -30,6 +40,9 @@ export function SiteChrome({
 }) {
   const pathname = usePathname();
   const minimal = MINIMAL_ROUTES.some((route) => pathname.startsWith(route));
+  const bare = BARE_ROUTES.some((route) => pathname.startsWith(route));
+
+  if (bare) return <>{children}</>;
 
   return (
     <>

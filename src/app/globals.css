@@ -212,6 +212,24 @@
   --overlay: color-mix(in oklab, var(--color-obsidian) 55%, transparent);
 
   --radius: 0px;
+
+  /* --- Admin portal ----------------------------------------------------
+   * A separate surface set, not a reuse of the storefront's. The shop is a
+   * gallery: warm paper, generous space, low contrast. A dashboard is a
+   * workspace read for hours, so it wants a cooler ground, tighter contrast
+   * steps and a rail that recedes behind the data rather than competing with
+   * it. Champagne stays as the single accent, which is what keeps the two
+   * halves recognisably one product.
+   */
+  --admin-canvas: #f4f3f1;
+  --admin-panel: #ffffff;
+  --admin-rail: #ffffff;
+  --admin-fg: var(--color-obsidian);
+  --admin-muted: var(--color-slate);
+  --admin-faint: var(--color-smoke);
+  --admin-line: color-mix(in oklab, var(--color-obsidian) 11%, transparent);
+  --admin-hover: color-mix(in oklab, var(--color-obsidian) 5%, transparent);
+  --admin-active: color-mix(in oklab, var(--color-champagne) 16%, transparent);
 }
 
 .dark {
@@ -252,6 +270,18 @@
 
   --hairline: color-mix(in oklab, var(--color-ivory) 12%, transparent);
   --overlay: color-mix(in oklab, var(--color-obsidian) 70%, transparent);
+
+  /* Admin, dark. The rail sits *below* the canvas in lightness rather than
+     above it, so the eye settles on the data and the navigation recedes. */
+  --admin-canvas: #101013;
+  --admin-panel: #17171b;
+  --admin-rail: #0c0c0f;
+  --admin-fg: var(--color-ivory);
+  --admin-muted: var(--color-mist);
+  --admin-faint: var(--color-smoke);
+  --admin-line: color-mix(in oklab, var(--color-ivory) 12%, transparent);
+  --admin-hover: color-mix(in oklab, var(--color-ivory) 7%, transparent);
+  --admin-active: color-mix(in oklab, var(--color-champagne) 20%, transparent);
 }
 
 @theme inline {
@@ -281,6 +311,19 @@
   --color-ring: var(--ring);
   --color-hairline: var(--hairline);
   --color-overlay: var(--overlay);
+
+  --color-admin-canvas: var(--admin-canvas);
+  --color-admin-panel: var(--admin-panel);
+  --color-admin-rail: var(--admin-rail);
+  --color-admin-fg: var(--admin-fg);
+  --color-admin-muted: var(--admin-muted);
+  --color-admin-faint: var(--admin-faint);
+  --color-admin-line: var(--admin-line);
+  --color-admin-hover: var(--admin-hover);
+  --color-admin-active: var(--admin-active);
+
+  --font-admin: var(--font-montserrat), "Montserrat", ui-sans-serif, system-ui,
+    sans-serif;
 }
 
 /* ============================================================================
@@ -553,4 +596,43 @@
   &::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* ============================================================================
+   Admin portal
+   ========================================================================== */
+
+/* A scrollbar that does not shout. Overlay-thin, and only coloured once the
+   region is hovered — the module rail scrolls, but its scrollbar should not be
+   a permanent vertical line competing with the active-item marker. */
+@utility admin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.3s ease;
+
+  &:hover {
+    scrollbar-color: var(--admin-line) transparent;
+  }
+
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 3px;
+  }
+  &:hover::-webkit-scrollbar-thumb {
+    background: var(--admin-line);
+  }
+}
+
+/* Figures in tables must align in their columns. Applied to every numeric cell
+   so a price column reads as a column rather than as ragged text. */
+@utility admin-figure {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
