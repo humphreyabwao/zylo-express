@@ -120,7 +120,6 @@ export const ADMIN_NAV: AdminModuleGroup[] = [
         label: "Customers",
         icon: Users,
         description: "Accounts, orders and lifetime value",
-        pending: true,
       },
     ],
   },

@@ -462,6 +462,125 @@ export async function listStaff(
   return toPage(data, count, page, pageSize);
 }
 
+/* ----------------------------------------------------------------- customers */
+
+export interface CustomerRow extends ProfileRow {
+  order_count: number;
+  /** Excludes cancelled and refunded, matching the dashboard's revenue. */
+  lifetime_value: number;
+  last_order_at: string | null;
+}
+
+export interface CustomerFilters {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  role?: "all" | UserRoleDb;
+  sort?: "recent" | "spend" | "orders" | "name";
+}
+
+/**
+ * Customer accounts, with what each has actually bought.
+ *
+ * Two round trips rather than one: profiles, then the order aggregates for
+ * exactly the ids on this page. PostgREST cannot GROUP BY through an embed, so
+ * the alternative is either a view or pulling every order for every customer
+ * and summing in Node — the second of which stops working at the first
+ * thousand orders.
+ *
+ * **This returns nothing unless the caller is a real admin.** The RLS policy on
+ * `profiles` is `auth.uid() = id or public.is_admin()`, so a request with no
+ * session — which is what `ADMIN_PREVIEW` produces, since the preview identity
+ * is fabricated in application code and never reaches Postgres — matches zero
+ * rows. That is the policy working, not a bug, and it is why this list looks
+ * empty in preview mode.
+ */
+export async function listCustomers(
+  filters: CustomerFilters = {}
+): Promise<Page<CustomerRow>> {
+  const supabase = await createOperatorClient();
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+  const from = (page - 1) * pageSize;
+
+  let query = supabase.from("profiles").select("*", { count: "exact" });
+
+  // Defaults to customers only. Staff have their own module, and mixing them
+  // in makes "how many customers do we have" unanswerable at a glance.
+  if (!filters.role || filters.role === "all") {
+    query = query.eq("role", "customer");
+  } else {
+    query = query.eq("role", filters.role);
+  }
+
+  if (filters.search?.trim()) {
+    const term = filters.search.trim().replace(/[(),*]/g, " ");
+    query = query.or(
+      `email.ilike.%${term}%,first_name.ilike.%${term}%,last_name.ilike.%${term}%`
+    );
+  }
+
+  // Spend and order count live on another table, so they cannot be sorted on
+  // here. Those two options sort the page in memory below, which is honest
+  // for a page of twenty and clearly signposted at the call site.
+  query =
+    filters.sort === "name"
+      ? query.order("first_name", { ascending: true, nullsFirst: false })
+      : query.order("created_at", { ascending: false });
+
+  const { data, count, error } = await query.range(from, from + pageSize - 1);
+
+  if (error) {
+    console.error("[admin] customer list failed:", error);
+    return toPage<CustomerRow>([], 0, page, pageSize);
+  }
+
+  const profiles = data ?? [];
+  if (profiles.length === 0) return toPage<CustomerRow>([], count, page, pageSize);
+
+  const { data: orders } = await supabase
+    .from("orders")
+    .select("user_id, total, status, placed_at")
+    .in(
+      "user_id",
+      profiles.map((p) => p.id)
+    );
+
+  const stats = new Map<string, { n: number; total: number; last: string | null }>();
+  for (const order of orders ?? []) {
+    if (!order.user_id) continue;
+    const entry = stats.get(order.user_id) ?? { n: 0, total: 0, last: null };
+
+    entry.n += 1;
+    // Cancelled and refunded are excluded so lifetime value agrees with the
+    // dashboard's revenue figure rather than quietly using a different rule.
+    if (order.status !== "cancelled" && order.status !== "refunded") {
+      entry.total += order.total ?? 0;
+    }
+    if (!entry.last || order.placed_at > entry.last) entry.last = order.placed_at;
+
+    stats.set(order.user_id, entry);
+  }
+
+  const rows: CustomerRow[] = profiles.map((profile) => {
+    const entry = stats.get(profile.id);
+    return {
+      ...profile,
+      order_count: entry?.n ?? 0,
+      lifetime_value: entry?.total ?? 0,
+      last_order_at: entry?.last ?? null,
+    };
+  });
+
+  if (filters.sort === "spend") {
+    rows.sort((a, b) => b.lifetime_value - a.lifetime_value);
+  } else if (filters.sort === "orders") {
+    rows.sort((a, b) => b.order_count - a.order_count);
+  }
+
+  return toPage(rows, count, page, pageSize);
+}
+
 /* -------------------------------------------------------------------- orders */
 
 export async function listOrders(
