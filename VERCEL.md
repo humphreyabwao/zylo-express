@@ -26,6 +26,21 @@ true — the prefix is what inlines a value into the browser bundle.
 | `SITE_URL` | Build and Runtime | Your production origin, no trailing slash |
 | `UPSTASH_REDIS_REST_URL` | Runtime | See §3 |
 | `UPSTASH_REDIS_REST_TOKEN` | Runtime | See §3 |
+| `PAYSTACK_SECRET_KEY` | Runtime | Cards and M-Pesa. Omit to hide both |
+| `PAYSTACK_CURRENCY` | Runtime | Defaults to `KES` |
+| `PAYPAL_CLIENT_ID` | Runtime | Omit to hide PayPal |
+| `PAYPAL_CLIENT_SECRET` | Runtime | |
+| `PAYPAL_ENVIRONMENT` | Runtime | `live`, or anything else for sandbox |
+| `PAYPAL_WEBHOOK_ID` | Runtime | Without it the PayPal webhook rejects everything |
+| `FX_USD_KES` | Runtime | Live rate. Falls back to a stale constant |
+| `CRON_SECRET` | Runtime | Bearer token for `/api/payments/expire` |
+
+> **Scope every variable to the environment you are deploying.** Vercel scopes
+> each variable to Production, Preview and Development independently, and a
+> value set only for Production is *absent* on a preview deployment. Missing
+> Supabase variables no longer take the site down — `src/proxy.ts` degrades to
+> passing requests through — but sessions will not refresh and auth redirects
+> are skipped, and the server log will say so once per instance.
 
 > **`SUPABASE_URL` is read at build time.** `next.config.ts` derives two things
 > from it before any request is served: the `images.remotePatterns` entry that
