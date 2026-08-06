@@ -15,10 +15,8 @@ import { AdminLoginForm } from "@/components/admin/login-form";
  * on arrival — a redirect loop that browsers report as an unhelpfully generic
  * error.
  *
- * The form is built and validated but not yet wired to Supabase: submitting it
- * explains what is missing rather than pretending to sign you in. Linking it is
- * a matter of calling the existing `signIn` action and dropping ADMIN_PREVIEW —
- * see the comment in the form.
+ * Live: the form authenticates against Supabase through `adminSignIn`, which
+ * also refuses accounts that are not staff. See `@/app/actions/admin/auth`.
  */
 export const metadata: Metadata = {
   title: "Sign in",
@@ -71,13 +69,15 @@ export default function AdminLoginPage() {
           <AdminLoginForm />
 
           {isPreviewMode() && (
-            <p className="mt-6 border border-champagne/40 bg-champagne/10 px-4 py-3 text-center text-[0.75rem] leading-relaxed text-admin-muted">
-              Preview mode is active, so{" "}
+            <p className="mt-6 rounded-lg border border-champagne/40 bg-champagne/10 px-4 py-3 text-center text-[0.75rem] leading-relaxed text-admin-muted">
+              <span className="font-semibold">ADMIN_PREVIEW is on.</span>{" "}
               <Link href="/admin" className="font-semibold underline">
-                the portal
+                The portal
               </Link>{" "}
-              is reachable without signing in. This page is not yet linked to the
-              guard.
+              is reachable without signing in, and writes will still be refused
+              by row-level security because the preview identity is not a real
+              session. Sign in above to work for real, then drop the flag from{" "}
+              <span className="admin-figure">.env.local</span>.
             </p>
           )}
         </div>

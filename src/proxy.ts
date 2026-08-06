@@ -21,11 +21,30 @@ import { createServerClient } from "@supabase/ssr";
  * anything that actually protects data must be enforced in Postgres.
  */
 
-/** Prefixes that require a signed-in user. */
+/** Prefixes that require a signed-in user, and bounce to the storefront form. */
 const PROTECTED_PREFIXES = ["/account"];
 
 /** Prefixes that a signed-in user has no reason to see. */
 const AUTH_ONLY_PREFIXES = ["/sign-in", "/sign-up"];
+
+/**
+ * The portal, which has its own door.
+ *
+ * Kept separate from `PROTECTED_PREFIXES` because the destination differs: a
+ * signed-out visitor to `/account` belongs at the storefront's `/sign-in`,
+ * whereas one at `/admin` belongs at `/admin/login`. Sending an operator to
+ * the customer form would have them sign in successfully and arrive back at a
+ * portal that still refuses them.
+ *
+ * `/admin/login` itself is excluded, or the redirect would target the page it
+ * was issued from — a loop the browser reports as a generic error.
+ *
+ * This is a redirect, not a permission check: `requireAdmin()` runs in the
+ * portal layout and RLS runs in Postgres. What it saves is rendering a page
+ * for someone who cannot see it.
+ */
+const ADMIN_ROOT = "/admin";
+const ADMIN_LOGIN = "/admin/login";
 
 /**
  * Warned about once per process, not once per request.
@@ -122,6 +141,27 @@ export async function proxy(request: NextRequest) {
     url.pathname = "/sign-in";
     // Send them back where they were headed once they have signed in.
     url.searchParams.set("redirectTo", pathname);
+    return NextResponse.redirect(url);
+  }
+
+  // The portal. Its own sign-in page is exempt, or this loops.
+  //
+  // Skipped entirely while ADMIN_PREVIEW is on, so the preview bypass still
+  // reaches the portal without a session — the guard makes the same
+  // allowance, and the two must agree or the preview lands on a login page
+  // it is meant to be exempt from.
+  const previewing =
+    process.env.NODE_ENV !== "production" && process.env.ADMIN_PREVIEW === "1";
+
+  if (
+    !user &&
+    !previewing &&
+    (pathname === ADMIN_ROOT || pathname.startsWith(`${ADMIN_ROOT}/`)) &&
+    pathname !== ADMIN_LOGIN
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = ADMIN_LOGIN;
+    url.search = "";
     return NextResponse.redirect(url);
   }
 
