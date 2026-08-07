@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { formatDate, formatPrice } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { requireAdmin } from "@/lib/admin/guard";
 import { listOrders, normalisePage } from "@/lib/admin/queries";
 import { ORDER_STATUS_TONE } from "@/lib/admin/status";
@@ -15,7 +15,9 @@ import {
   Th,
   Tr,
 } from "@/components/admin/primitives";
+import { Money } from "@/components/admin/admin-currency";
 import { ListToolbar } from "@/components/admin/toolbar";
+import { RealtimeRefresh } from "@/components/admin/realtime-refresh";
 import { Pagination } from "@/components/admin/pagination";
 
 export const metadata = { title: "Orders" };
@@ -35,7 +37,7 @@ export default async function AdminOrdersPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
+  await requireAdmin("orders");
 
   const params = await searchParams;
   const read = (key: string) => {
@@ -50,10 +52,9 @@ export default async function AdminOrdersPage({
 
   return (
     <>
-      <PageHeader
-        title="Orders"
-        description="Every order placed, with its fulfilment state."
-      />
+      <PageHeader title="Orders">
+        <RealtimeRefresh channel="orders" />
+      </PageHeader>
 
       <Panel>
         <ListToolbar
@@ -112,7 +113,7 @@ export default async function AdminOrdersPage({
                     </Badge>
                   </Td>
                   <Td align="right" className="admin-figure font-semibold">
-                    {formatPrice(order.total)}
+                    <Money amount={order.total} />
                   </Td>
                 </Tr>
               ))}

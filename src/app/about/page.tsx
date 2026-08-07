@@ -132,7 +132,7 @@ export default function AboutPage() {
           align="left"
         />
 
-        <ul className="mt-14 grid gap-x-12 gap-y-12 md:grid-cols-2">
+        <ul className="mt-section-gap grid gap-x-12 gap-y-12 md:grid-cols-2">
           {PRINCIPLES.map((principle, index) => (
             <li key={principle.title}>
               <Reveal delay={(index % 2) * 80}>

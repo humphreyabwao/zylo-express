@@ -17,7 +17,7 @@ export type ProductFlagDb =
 
 export type CurrencyDb = "USD" | "EUR" | "GBP";
 export type OptionTypeDb = "color" | "size" | "material" | "text";
-export type UserRoleDb = "customer" | "staff" | "admin";
+export type UserRoleDb = "customer" | "staff" | "admin" | "superadmin";
 export type ShippingSpeedDb = "standard" | "express" | "same-day";
 export type PromotionKindDb = "percentage" | "fixed" | "free-shipping";
 export type MessageStatusDb = "new" | "in-progress" | "resolved";
@@ -152,6 +152,11 @@ export type ProfileRow = {
   last_name: string | null;
   phone: string | null;
   role: UserRoleDb;
+  /**
+   * Admin module segments this account may reach, e.g. `["products"]`.
+   * Ignored for `superadmin`. See `src/lib/admin/permissions.ts`.
+   */
+  permissions: string[];
   marketing_opt_in: boolean;
   created_at: string;
 }
@@ -261,6 +266,131 @@ export type ArticleRow = {
   author: string;
   is_published: boolean;
   published_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * One section of a content page's body.
+ *
+ * Stored as `jsonb` rather than as a child table: a page's sections are only
+ * ever read and written whole, never queried across, so a table would buy
+ * nothing but a join. Mirrors `ContentSection` in `src/data/content.ts`, which
+ * is the fallback these rows replace.
+ */
+export type ContentSection = {
+  heading: string;
+  body: string[];
+  facts?: { term: string; detail: string }[];
+}
+
+export type ContentPageRow = {
+  id: string;
+  slug: string;
+  /** Namespaces the slug: 'legal', 'help', 'about', 'services'. */
+  section: string;
+  title: string;
+  eyebrow: string;
+  subtitle: string;
+  body: ContentSection[];
+  seo_title: string | null;
+  seo_description: string | null;
+  is_published: boolean;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ContactMessageRow = {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  order_reference: string | null;
+  status: MessageStatusDb;
+  created_at: string;
+}
+
+export type AppointmentStatusDb =
+  | "requested"
+  | "confirmed"
+  | "completed"
+  | "cancelled";
+
+export type AppointmentModeDb = "in-person" | "video";
+
+export type AppointmentRow = {
+  id: string;
+  /** ZY-APT-000000, assigned by trigger. Never supplied by a caller. */
+  reference: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  mode: AppointmentModeDb;
+  /** Null for video appointments — enforced by a check constraint. */
+  boutique: string | null;
+  /** What the customer asked for. Never overwritten by a reschedule. */
+  preferred_at: string;
+  alternate_at: string | null;
+  /** What staff agreed to, if anything yet. */
+  confirmed_at: string | null;
+  party_size: number;
+  interest: string;
+  /** The customer's own note. */
+  notes: string;
+  status: AppointmentStatusDb;
+  /** Staff-only, never shown to the customer. */
+  staff_note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type SalePaymentMethodDb = "cash" | "card" | "mpesa" | "other";
+
+export type SaleRow = {
+  id: string;
+  /** ZY-POS-000000, assigned by trigger. */
+  reference: string;
+  operator_id: string | null;
+  /** Copied, so a receipt still names the operator after the account goes. */
+  operator_name: string;
+  customer_name: string | null;
+  customer_email: string | null;
+  subtotal: number;
+  discount: number;
+  total: number;
+  currency: CurrencyDb;
+  payment_method: SalePaymentMethodDb;
+  /** Cash tendered, for change. Null for every other method. */
+  tendered: number | null;
+  note: string;
+  created_at: string;
+}
+
+export type SaleItemRow = {
+  id: string;
+  sale_id: string;
+  /** Null once the variant is deleted — the copied fields below survive it. */
+  variant_id: string | null;
+  product_name: string;
+  variant_title: string;
+  sku: string;
+  /** What it sold for, not what it costs today. */
+  unit_price: number;
+  quantity: number;
+  line_total: number;
+}
+
+export type NewsletterSubscriberRow = {
+  id: string;
+  email: string;
+  /** Where the signup came from: 'footer', 'campaign', … */
+  source: string;
+  is_confirmed: boolean;
+  /** Set rather than deleting the row, so a resubscribe is distinguishable. */
+  unsubscribed_at: string | null;
+  created_at: string;
 }
 
 export type PromotionRow = {
@@ -355,25 +485,53 @@ export type Database = {
       }>;
       promotions: Table<PromotionRow>;
       articles: Table<ArticleRow>;
+      // Was missing entirely, which is why nothing could read or write it —
+      // `from("content_pages")` did not typecheck, so the CMS table sat unused
+      // while /help and /legal served hard-coded copy from src/data/content.ts.
+      content_pages: Table<ContentPageRow>;
       site_settings: Table<SiteSettingRow>;
-      newsletter_subscribers: Table<{
-        id: string;
-        email: string;
-        source: string;
-        is_confirmed: boolean;
-      }>;
-      contact_messages: Table<{
-        id: string;
-        name: string;
-        email: string;
-        subject: string;
-        message: string;
-        order_reference: string | null;
-        status: MessageStatusDb;
-      }>;
+      // Was declared with four of its six columns, so `unsubscribed_at` and
+      // `created_at` were invisible to every query — which is most of why the
+      // subscriber list could not have been built against it.
+      newsletter_subscribers: Table<NewsletterSubscriberRow>;
+      contact_messages: Table<ContactMessageRow>;
+      // `reference` is assigned by a trigger, so an insert must be allowed to
+      // omit it — `Table`'s Insert defaults to Partial<Row>, which covers that.
+      appointments: Table<AppointmentRow>;
+      sales: Table<SaleRow>;
+      sale_items: Table<SaleItemRow>;
     };
     Views: Record<string, never>;
     Functions: {
+      /**
+       * Insert-or-reactivate a newsletter address.
+       *
+       * `SECURITY DEFINER`, because an anonymous upsert is refused — the
+       * insert policy grants INSERT but not the UPDATE that `ON CONFLICT DO
+       * UPDATE` needs. Returns void so it cannot be used to probe whether an
+       * address is already on the list. See migration 12.
+       */
+      /**
+       * Writes a counter sale and decrements its stock in one transaction.
+       * SECURITY INVOKER, so RLS is what authorises it. See migration 15.
+       */
+      record_sale: {
+        Args: {
+          p_operator_name: string;
+          p_customer_name: string | null;
+          p_customer_email: string | null;
+          p_payment_method: SalePaymentMethodDb;
+          p_discount: number;
+          p_tendered: number | null;
+          p_note: string;
+          p_items: { variantId: string; quantity: number }[];
+        };
+        Returns: SaleRow;
+      };
+      subscribe_to_newsletter: {
+        Args: { p_email: string; p_source?: string };
+        Returns: void;
+      };
       search_products: {
         Args: { p_query: string; p_limit?: number };
         Returns: ProductRow[];
@@ -433,6 +591,9 @@ export type Database = {
       shipping_speed: ShippingSpeedDb;
       promotion_kind: PromotionKindDb;
       message_status: MessageStatusDb;
+      appointment_status: AppointmentStatusDb;
+      appointment_mode: AppointmentModeDb;
+      sale_payment_method: SalePaymentMethodDb;
     };
     CompositeTypes: Record<string, never>;
   };

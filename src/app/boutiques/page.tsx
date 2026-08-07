@@ -87,7 +87,9 @@ export default function BoutiquesPage() {
                   </dl>
 
                   <Button asChild variant="outline" className="mt-7">
-                    <Link href="/services#appointments">
+                    <Link
+                      href={`/services/appointments?boutique=${encodeURIComponent(boutique.city)}`}
+                    >
                       Book in {boutique.city}
                     </Link>
                   </Button>
@@ -111,7 +113,9 @@ export default function BoutiquesPage() {
               was made.
             </p>
             <Button asChild size="lg" className="mt-10">
-              <Link href="/help/contact">Arrange a video appointment</Link>
+              <Link href="/services/appointments?mode=video">
+                Arrange a video appointment
+              </Link>
             </Button>
           </Reveal>
         </div>

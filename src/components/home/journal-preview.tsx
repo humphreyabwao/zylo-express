@@ -20,7 +20,7 @@ export function JournalPreview({
         link={{ href: "/journal", label: "Read the journal" }}
       />
 
-      <ul className="mt-14 grid gap-x-8 gap-y-12 md:grid-cols-3">
+      <ul className="mt-section-gap grid gap-x-8 gap-y-12 md:grid-cols-3">
         {articles.map((article, index) => (
           <li key={article.slug}>
             <Reveal delay={index * 90}>

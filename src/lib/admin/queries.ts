@@ -1,10 +1,24 @@
 import "server-only";
 
 import { createOperatorClient } from "@/lib/admin/guard";
+import { logQueryFailure } from "@/lib/admin/errors";
 import type {
+  AppointmentRow,
+  AppointmentStatusDb,
+  ArticleRow,
+  CategoryRow,
+  CollectionRow,
+  ContactMessageRow,
+  ContentPageRow,
+  MessageStatusDb,
+  NewsletterSubscriberRow,
+  SaleItemRow,
+  SalePaymentMethodDb,
+  SaleRow,
   InventorySummaryRpcResult,
   OrderRow,
   OrderStatusDb,
+  ProductImageRow,
   ProductRow,
   ProductVariantRow,
   ProfileRow,
@@ -206,7 +220,7 @@ export async function listProducts(
 
   const { data, count, error } = await query.range(from, from + pageSize - 1);
   if (error) {
-    console.error("[admin] product list failed:", error);
+    logQueryFailure("product list", error);
     return toPage<ProductListRow>([], 0, page, pageSize);
   }
 
@@ -278,21 +292,15 @@ export async function getInventorySummary(): Promise<InventorySummaryRpcResult> 
     // setup step, not a failure, and it deserves a line that says so rather
     // than a generic error the reader has to go and decode.
     //
-    // The object is spread rather than logged directly: a PostgrestError has
-    // no own enumerable properties that survive structured logging, so
-    // `console.error(msg, error)` prints `{}` and tells nobody anything.
+    // `logQueryFailure` unpacks the error: a PostgrestError has no own
+    // enumerable properties, so logging one directly prints `{}`.
     if (error?.code === "PGRST202") {
       console.warn(
         "[admin] inventory_summary() is missing — apply migration 9 " +
           "(npm run schema -- --from 7). Showing zeroed totals meanwhile."
       );
     } else {
-      console.error("[admin] inventory summary failed:", {
-        code: error?.code,
-        message: error?.message,
-        details: error?.details,
-        hint: error?.hint,
-      });
+      logQueryFailure("inventory summary", error);
     }
 
     // Zeroes rather than a thrown error: the table below this summary reads
@@ -392,7 +400,7 @@ export async function listInventory(
   const { data, count, error } = await query.range(from, from + pageSize - 1);
 
   if (error) {
-    console.error("[admin] inventory list failed:", error);
+    logQueryFailure("inventory list", error);
     return toPage<InventoryRow>([], 0, page, pageSize);
   }
 
@@ -415,6 +423,19 @@ export async function listInventory(
 
 /* --------------------------------------------------------------------- staff */
 
+/**
+ * A portal account, with whether Supabase is currently refusing it a token.
+ *
+ * `suspended` does not live in `profiles`. It is an auth-level ban, so the
+ * enforcement is Supabase's rather than ours — a flag in a table would only be
+ * as good as the code that remembered to check it. That means one extra
+ * service-role call to read it back, which is why it is merged here rather
+ * than fetched per row.
+ */
+export interface StaffListRow extends ProfileRow {
+  suspended: boolean;
+}
+
 export interface StaffFilters {
   page?: number;
   pageSize?: number;
@@ -430,7 +451,7 @@ export interface StaffFilters {
  */
 export async function listStaff(
   filters: StaffFilters = {}
-): Promise<Page<ProfileRow>> {
+): Promise<Page<StaffListRow>> {
   const supabase = await createOperatorClient();
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
@@ -455,11 +476,179 @@ export async function listStaff(
     .range(from, from + pageSize - 1);
 
   if (error) {
-    console.error("[admin] staff list failed:", error);
-    return toPage<ProfileRow>([], 0, page, pageSize);
+    logQueryFailure("staff list", error);
+    return toPage<StaffListRow>([], 0, page, pageSize);
   }
 
-  return toPage(data, count, page, pageSize);
+  const rows = data as ProfileRow[];
+  const suspended = await getSuspendedIds(rows.map((row) => row.id));
+
+  return toPage(
+    rows.map((row) => ({ ...row, suspended: suspended.has(row.id) })),
+    count,
+    page,
+    pageSize
+  );
+}
+
+/**
+ * Which of these accounts Supabase is currently refusing.
+ *
+ * `banned_until` lives on `auth.users`, which PostgREST does not expose and RLS
+ * does not govern — reading it needs the service-role client and the Admin API.
+ * Failure is swallowed: a staff list that renders without suspension badges is
+ * far better than one that does not render.
+ */
+async function getSuspendedIds(ids: string[]): Promise<Set<string>> {
+  const suspended = new Set<string>();
+  if (ids.length === 0) return suspended;
+
+  try {
+    const { createAdminClient } = await import("@/lib/supabase/admin");
+    // One page covers any plausible staff list. Customers are filtered out of
+    // this view before it is called, so the ceiling is generous.
+    const { data, error } = await createAdminClient().auth.admin.listUsers({
+      page: 1,
+      perPage: 200,
+    });
+
+    if (error) {
+      logQueryFailure("suspension lookup", error);
+      return suspended;
+    }
+
+    const wanted = new Set(ids);
+    const now = Date.now();
+
+    for (const user of data.users) {
+      if (!wanted.has(user.id)) continue;
+      const until = (user as { banned_until?: string | null }).banned_until;
+      if (until && Date.parse(until) > now) suspended.add(user.id);
+    }
+  } catch (error) {
+    logQueryFailure("suspension lookup threw", error);
+  }
+
+  return suspended;
+}
+
+/* ----------------------------------------------------------------- customers */
+
+export interface CustomerRow extends ProfileRow {
+  order_count: number;
+  /** Excludes cancelled and refunded, matching the dashboard's revenue. */
+  lifetime_value: number;
+  last_order_at: string | null;
+}
+
+export interface CustomerFilters {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  role?: "all" | UserRoleDb;
+  sort?: "recent" | "spend" | "orders" | "name";
+}
+
+/**
+ * Customer accounts, with what each has actually bought.
+ *
+ * Two round trips rather than one: profiles, then the order aggregates for
+ * exactly the ids on this page. PostgREST cannot GROUP BY through an embed, so
+ * the alternative is either a view or pulling every order for every customer
+ * and summing in Node — the second of which stops working at the first
+ * thousand orders.
+ *
+ * **This returns nothing unless the caller is a real admin.** The RLS policy on
+ * `profiles` is `auth.uid() = id or public.is_admin()`, so a request with no
+ * session — which is what `ADMIN_PREVIEW` produces, since the preview identity
+ * is fabricated in application code and never reaches Postgres — matches zero
+ * rows. That is the policy working, not a bug, and it is why this list looks
+ * empty in preview mode.
+ */
+export async function listCustomers(
+  filters: CustomerFilters = {}
+): Promise<Page<CustomerRow>> {
+  const supabase = await createOperatorClient();
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+  const from = (page - 1) * pageSize;
+
+  let query = supabase.from("profiles").select("*", { count: "exact" });
+
+  // Defaults to customers only. Staff have their own module, and mixing them
+  // in makes "how many customers do we have" unanswerable at a glance.
+  if (!filters.role || filters.role === "all") {
+    query = query.eq("role", "customer");
+  } else {
+    query = query.eq("role", filters.role);
+  }
+
+  if (filters.search?.trim()) {
+    const term = filters.search.trim().replace(/[(),*]/g, " ");
+    query = query.or(
+      `email.ilike.%${term}%,first_name.ilike.%${term}%,last_name.ilike.%${term}%`
+    );
+  }
+
+  // Spend and order count live on another table, so they cannot be sorted on
+  // here. Those two options sort the page in memory below, which is honest
+  // for a page of twenty and clearly signposted at the call site.
+  query =
+    filters.sort === "name"
+      ? query.order("first_name", { ascending: true, nullsFirst: false })
+      : query.order("created_at", { ascending: false });
+
+  const { data, count, error } = await query.range(from, from + pageSize - 1);
+
+  if (error) {
+    logQueryFailure("customer list", error);
+    return toPage<CustomerRow>([], 0, page, pageSize);
+  }
+
+  const profiles = data ?? [];
+  if (profiles.length === 0) return toPage<CustomerRow>([], count, page, pageSize);
+
+  const { data: orders } = await supabase
+    .from("orders")
+    .select("user_id, total, status, placed_at")
+    .in(
+      "user_id",
+      profiles.map((p) => p.id)
+    );
+
+  const stats = new Map<string, { n: number; total: number; last: string | null }>();
+  for (const order of orders ?? []) {
+    if (!order.user_id) continue;
+    const entry = stats.get(order.user_id) ?? { n: 0, total: 0, last: null };
+
+    entry.n += 1;
+    // Cancelled and refunded are excluded so lifetime value agrees with the
+    // dashboard's revenue figure rather than quietly using a different rule.
+    if (order.status !== "cancelled" && order.status !== "refunded") {
+      entry.total += order.total ?? 0;
+    }
+    if (!entry.last || order.placed_at > entry.last) entry.last = order.placed_at;
+
+    stats.set(order.user_id, entry);
+  }
+
+  const rows: CustomerRow[] = profiles.map((profile) => {
+    const entry = stats.get(profile.id);
+    return {
+      ...profile,
+      order_count: entry?.n ?? 0,
+      lifetime_value: entry?.total ?? 0,
+      last_order_at: entry?.last ?? null,
+    };
+  });
+
+  if (filters.sort === "spend") {
+    rows.sort((a, b) => b.lifetime_value - a.lifetime_value);
+  } else if (filters.sort === "orders") {
+    rows.sort((a, b) => b.order_count - a.order_count);
+  }
+
+  return toPage(rows, count, page, pageSize);
 }
 
 /* -------------------------------------------------------------------- orders */
@@ -482,7 +671,7 @@ export async function listOrders(
     .range(from, from + pageSize - 1);
 
   if (error) {
-    console.error("[admin] order list failed:", error);
+    logQueryFailure("order list", error);
     return toPage<OrderRow>([], 0, page, pageSize);
   }
 
@@ -537,7 +726,7 @@ export async function listPromotions(
     .range(from, from + pageSize - 1);
 
   if (error) {
-    console.error("[admin] promotion list failed:", error);
+    logQueryFailure("promotion list", error);
     return toPage<PromotionListRow>([], 0, page, pageSize);
   }
 
@@ -627,4 +816,1103 @@ export async function getNotifications(): Promise<AdminNotification[]> {
   }
 
   return notifications;
+}
+
+/* ---------------------------------------------------------------- categories */
+
+/**
+ * A category with the size of the catalogue behind it.
+ *
+ * `product_count` is what makes the list actionable rather than decorative:
+ * it is the number Delete has to warn about, and the one that tells an
+ * operator which categories are real and which were created and forgotten.
+ */
+export interface CategoryListRow extends CategoryRow {
+  product_count: number;
+}
+
+export interface CategoryFilters {
+  search?: string;
+  status?: "all" | "active" | "draft";
+  group?: string;
+  sort?: "position" | "name" | "products";
+}
+
+/**
+ * Every category, unpaginated.
+ *
+ * Deliberately not paged. Categories are the navigation of the shop — a few
+ * dozen at the outside — and `position` is only meaningful against the whole
+ * ordered set. Paging a sortable list means an operator can move something to
+ * "first" and watch it vanish onto another page.
+ */
+export async function listCategories(
+  filters: CategoryFilters = {}
+): Promise<CategoryListRow[]> {
+  const supabase = await createOperatorClient();
+
+  let query = supabase.from("categories").select("*, products(count)");
+
+  if (filters.search?.trim()) {
+    const term = filters.search.trim().replace(/[(),*]/g, " ");
+    query = query.or(`name.ilike.%${term}%,slug.ilike.%${term}%`);
+  }
+
+  if (filters.status === "active") query = query.eq("is_active", true);
+  if (filters.status === "draft") query = query.eq("is_active", false);
+  if (filters.group) query = query.eq("group", filters.group);
+
+  const { data, error } = await query;
+  if (error) {
+    logQueryFailure("category list", error);
+    return [];
+  }
+
+  // Same `as unknown as` as `listProducts`: the generated types declare
+  // `Relationships: []`, so postgrest-js cannot infer an embedded select.
+  type Joined = CategoryRow & { products: { count: number }[] | null };
+
+  const rows = (data as unknown as Joined[]).map((row) => {
+    const { products, ...category } = row;
+    return {
+      ...category,
+      product_count: products?.[0]?.count ?? 0,
+    } satisfies CategoryListRow;
+  });
+
+  // Sorted here rather than in Postgres because `products` sorts on an
+  // aggregate over an embedded resource, which PostgREST cannot order by. The
+  // set is small enough that this is free.
+  return rows.sort((a, b) => {
+    switch (filters.sort) {
+      case "name":
+        return a.name.localeCompare(b.name);
+      case "products":
+        return b.product_count - a.product_count;
+      default:
+        return a.position - b.position || a.name.localeCompare(b.name);
+    }
+  });
+}
+
+/** The distinct nav groupings in use, for the filter control. */
+export async function listCategoryGroups(): Promise<string[]> {
+  const supabase = await createOperatorClient();
+  const { data, error } = await supabase.from("categories").select("group");
+
+  if (error) {
+    logQueryFailure("category groups", error);
+    return [];
+  }
+
+  const groups = new Set(
+    (data as { group: string }[])
+      .map((row) => row.group?.trim())
+      .filter((group): group is string => Boolean(group))
+  );
+
+  return [...groups].sort((a, b) => a.localeCompare(b));
+}
+
+/* --------------------------------------------------------------- collections */
+
+export interface CollectionListRow extends CollectionRow {
+  product_count: number;
+}
+
+export interface CollectionFilters {
+  search?: string;
+  status?: "all" | "active" | "draft";
+  featured?: "all" | "featured" | "standard";
+  sort?: "position" | "name" | "products";
+}
+
+/** Every collection. Unpaginated, for the same reason as `listCategories`. */
+export async function listCollections(
+  filters: CollectionFilters = {}
+): Promise<CollectionListRow[]> {
+  const supabase = await createOperatorClient();
+
+  let query = supabase
+    .from("collections")
+    .select("*, product_collections(count)");
+
+  if (filters.search?.trim()) {
+    const term = filters.search.trim().replace(/[(),*]/g, " ");
+    query = query.or(`name.ilike.%${term}%,slug.ilike.%${term}%`);
+  }
+
+  if (filters.status === "active") query = query.eq("is_active", true);
+  if (filters.status === "draft") query = query.eq("is_active", false);
+  if (filters.featured === "featured") query = query.eq("is_featured", true);
+  if (filters.featured === "standard") query = query.eq("is_featured", false);
+
+  const { data, error } = await query;
+  if (error) {
+    logQueryFailure("collection list", error);
+    return [];
+  }
+
+  type Joined = CollectionRow & {
+    product_collections: { count: number }[] | null;
+  };
+
+  const rows = (data as unknown as Joined[]).map((row) => {
+    const { product_collections, ...collection } = row;
+    return {
+      ...collection,
+      product_count: product_collections?.[0]?.count ?? 0,
+    } satisfies CollectionListRow;
+  });
+
+  return rows.sort((a, b) => {
+    switch (filters.sort) {
+      case "name":
+        return a.name.localeCompare(b.name);
+      case "products":
+        return b.product_count - a.product_count;
+      default:
+        return a.position - b.position || a.name.localeCompare(b.name);
+    }
+  });
+}
+
+/** Products, in the order they sit inside one collection. */
+export interface CollectionMemberRow {
+  product_id: string;
+  position: number;
+  name: string;
+  slug: string;
+  is_active: boolean;
+}
+
+export async function listCollectionMembers(
+  collectionId: string
+): Promise<CollectionMemberRow[]> {
+  const supabase = await createOperatorClient();
+
+  const { data, error } = await supabase
+    .from("product_collections")
+    .select("product_id, position, products(name, slug, is_active)")
+    .eq("collection_id", collectionId)
+    .order("position");
+
+  if (error) {
+    logQueryFailure("collection members", error);
+    return [];
+  }
+
+  type Joined = {
+    product_id: string;
+    position: number;
+    products: { name: string; slug: string; is_active: boolean } | null;
+  };
+
+  return (data as unknown as Joined[])
+    // A product deleted out from under the join leaves a row with no parent.
+    // Skipped rather than rendered as a blank line.
+    .filter((row) => row.products !== null)
+    .map((row) => ({
+      product_id: row.product_id,
+      position: row.position,
+      name: row.products!.name,
+      slug: row.products!.slug,
+      is_active: row.products!.is_active,
+    }));
+}
+
+/* -------------------------------------------------------------------- media */
+
+/**
+ * One object in the media bucket, with what the catalogue knows about it.
+ *
+ * `usage` is the join that makes this a library rather than a file listing: an
+ * operator deleting a file needs to know whether a product page is about to
+ * lose its photograph. `null` means nothing references it — an orphan, which
+ * is safe to remove and is usually the residue of a failed upload.
+ */
+export interface MediaAsset {
+  path: string;
+  name: string;
+  size: number;
+  contentType: string | null;
+  updatedAt: string | null;
+  /** The `product_images` row pointing at this object, if there is one. */
+  usage: {
+    imageId: string;
+    alt: string;
+    productId: string;
+    productName: string;
+    productSlug: string;
+    position: number;
+  } | null;
+}
+
+export interface MediaFilters {
+  search?: string;
+  usage?: "all" | "attached" | "orphan";
+  sort?: "recent" | "name" | "size";
+}
+
+/** Objects live under prefixes; these are the ones this app writes. */
+const MEDIA_PREFIXES = ["products", "collections", "campaign", "editorial"];
+
+/** Supabase Storage caps `list` at 100 per call unless asked otherwise. */
+const STORAGE_PAGE = 100;
+
+/**
+ * The media library.
+ *
+ * Storage is the source of truth for *what exists*, and `product_images` for
+ * *what is used* — so this reads both and joins them in memory. There is no
+ * single query that could do it: the objects are not rows.
+ */
+export async function listMedia(filters: MediaFilters = {}): Promise<MediaAsset[]> {
+  const supabase = await createOperatorClient();
+
+  // One listing per prefix. Storage has no recursive list, and walking
+  // arbitrary depth would mean a request per directory discovered — these four
+  // are the only prefixes anything writes to.
+  const listings = await Promise.all(
+    MEDIA_PREFIXES.map(async (prefix) => {
+      const { data, error } = await supabase.storage.from("media").list(prefix, {
+        limit: STORAGE_PAGE,
+        sortBy: { column: "updated_at", order: "desc" },
+      });
+
+      if (error) {
+        // A prefix that has never been written to returns empty, not an error;
+        // a real failure here should not blank the whole library.
+        logQueryFailure(`media list (${prefix})`, error);
+        return [];
+      }
+
+      return (data ?? [])
+        // Storage returns a zero-byte placeholder row for nested folders.
+        .filter((object) => object.id !== null)
+        .map((object) => ({
+          path: `${prefix}/${object.name}`,
+          name: object.name,
+          size: (object.metadata?.size as number | undefined) ?? 0,
+          contentType: (object.metadata?.mimetype as string | undefined) ?? null,
+          updatedAt: object.updated_at ?? object.created_at ?? null,
+        }));
+    })
+  );
+
+  const objects = listings.flat();
+  if (objects.length === 0) return [];
+
+  const { data: imageRows, error: imageError } = await supabase
+    .from("product_images")
+    .select("id, product_id, storage_path, alt, position, products(name, slug)")
+    .in(
+      "storage_path",
+      objects.map((object) => object.path)
+    );
+
+  if (imageError) {
+    logQueryFailure("media usage lookup", imageError);
+  }
+
+  type JoinedImage = Pick<
+    ProductImageRow,
+    "id" | "product_id" | "storage_path" | "alt" | "position"
+  > & { products: { name: string; slug: string } | null };
+
+  const usageByPath = new Map<string, MediaAsset["usage"]>();
+  for (const row of (imageRows ?? []) as unknown as JoinedImage[]) {
+    usageByPath.set(row.storage_path, {
+      imageId: row.id,
+      alt: row.alt,
+      productId: row.product_id,
+      productName: row.products?.name ?? "Unknown product",
+      productSlug: row.products?.slug ?? "",
+      position: row.position,
+    });
+  }
+
+  let assets: MediaAsset[] = objects.map((object) => ({
+    ...object,
+    usage: usageByPath.get(object.path) ?? null,
+  }));
+
+  if (filters.search?.trim()) {
+    const term = filters.search.trim().toLowerCase();
+    assets = assets.filter(
+      (asset) =>
+        asset.path.toLowerCase().includes(term) ||
+        (asset.usage?.productName.toLowerCase().includes(term) ?? false)
+    );
+  }
+
+  if (filters.usage === "attached") assets = assets.filter((a) => a.usage);
+  if (filters.usage === "orphan") assets = assets.filter((a) => !a.usage);
+
+  return assets.sort((a, b) => {
+    switch (filters.sort) {
+      case "name":
+        return a.path.localeCompare(b.path);
+      case "size":
+        return b.size - a.size;
+      default:
+        return (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "");
+    }
+  });
+}
+
+/* ------------------------------------------------------------------ journal */
+
+export interface ArticleFilters {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: "all" | "published" | "draft" | "scheduled";
+  sort?: "recent" | "oldest" | "title";
+}
+
+export type ArticleStatus = "published" | "draft" | "scheduled";
+
+/**
+ * An article with its status already decided.
+ *
+ * Resolved here rather than in the page, because working it out needs the
+ * current time and reading the clock during render is exactly the impurity
+ * React's linter objects to. The query already has a `now` for its own
+ * filtering, so this costs nothing and gives the list one fewer thing to
+ * compute per row.
+ */
+export interface ArticleListRow extends ArticleRow {
+  status: ArticleStatus;
+}
+
+/**
+ * Editorial articles.
+ *
+ * Paged, unlike categories and collections: a journal accumulates
+ * indefinitely, and its order is chronological rather than curated — so there
+ * is no whole-set operation that paging would break.
+ *
+ * "Scheduled" is not a column. An article is scheduled when it is published
+ * with a `published_at` in the future: the storefront's read policy is
+ * `using (is_published)` and `getJournal()` orders by `published_at desc`, so
+ * a future date is live in the database and simply sits at the top of a list
+ * nobody is looking at yet. Surfacing it as its own status is what stops that
+ * being a surprise.
+ */
+export async function listArticles(
+  filters: ArticleFilters = {}
+): Promise<Page<ArticleListRow>> {
+  const supabase = await createOperatorClient();
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+  const from = (page - 1) * pageSize;
+  const now = new Date().toISOString();
+
+  let query = supabase.from("articles").select("*", { count: "exact" });
+
+  if (filters.search?.trim()) {
+    const term = filters.search.trim().replace(/[(),*]/g, " ");
+    query = query.or(`title.ilike.%${term}%,slug.ilike.%${term}%`);
+  }
+
+  switch (filters.status) {
+    case "published":
+      query = query.eq("is_published", true).lte("published_at", now);
+      break;
+    case "draft":
+      query = query.eq("is_published", false);
+      break;
+    case "scheduled":
+      query = query.eq("is_published", true).gt("published_at", now);
+      break;
+  }
+
+  switch (filters.sort) {
+    case "oldest":
+      query = query.order("published_at", { ascending: true });
+      break;
+    case "title":
+      query = query.order("title", { ascending: true });
+      break;
+    default:
+      query = query.order("published_at", { ascending: false });
+  }
+
+  const { data, count, error } = await query.range(from, from + pageSize - 1);
+  if (error) {
+    logQueryFailure("article list", error);
+    return toPage<ArticleListRow>([], 0, page, pageSize);
+  }
+
+  const rows = (data as ArticleRow[]).map((article) => ({
+    ...article,
+    status: !article.is_published
+      ? ("draft" as const)
+      : article.published_at > now
+        ? ("scheduled" as const)
+        : ("published" as const),
+  }));
+
+  return toPage(rows, count, page, pageSize);
+}
+
+/* -------------------------------------------------------------------- pages */
+
+export interface ContentPageFilters {
+  search?: string;
+  section?: string;
+  status?: "all" | "published" | "draft";
+}
+
+/**
+ * CMS pages, grouped by the section that namespaces them.
+ *
+ * Unpaginated and returned in section order: these back a fixed set of
+ * storefront routes (/help/…, /legal/…), so the list is a site map rather than
+ * a feed, and there will never be enough of them to page.
+ */
+export async function listContentPages(
+  filters: ContentPageFilters = {}
+): Promise<ContentPageRow[]> {
+  const supabase = await createOperatorClient();
+
+  let query = supabase.from("content_pages").select("*");
+
+  if (filters.search?.trim()) {
+    const term = filters.search.trim().replace(/[(),*]/g, " ");
+    query = query.or(`title.ilike.%${term}%,slug.ilike.%${term}%`);
+  }
+
+  if (filters.section) query = query.eq("section", filters.section);
+  if (filters.status === "published") query = query.eq("is_published", true);
+  if (filters.status === "draft") query = query.eq("is_published", false);
+
+  const { data, error } = await query
+    .order("section")
+    .order("position")
+    .order("title");
+
+  if (error) {
+    logQueryFailure("content page list", error);
+    return [];
+  }
+
+  return data as ContentPageRow[];
+}
+
+/** The distinct sections in use, for the filter control. */
+export async function listContentSections(): Promise<string[]> {
+  const supabase = await createOperatorClient();
+  const { data, error } = await supabase.from("content_pages").select("section");
+
+  if (error) {
+    logQueryFailure("content sections", error);
+    return [];
+  }
+
+  const sections = new Set(
+    (data as { section: string }[])
+      .map((row) => row.section?.trim())
+      .filter((section): section is string => Boolean(section))
+  );
+
+  return [...sections].sort((a, b) => a.localeCompare(b));
+}
+
+/* ----------------------------------------------------------------- messages */
+
+export interface MessageFilters {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: "all" | MessageStatusDb;
+  sort?: "recent" | "oldest";
+}
+
+export interface MessageCounts {
+  all: number;
+  new: number;
+  "in-progress": number;
+  resolved: number;
+}
+
+/**
+ * The contact inbox.
+ *
+ * `contact_messages` is write-only to the public and admin-only to read — see
+ * the policies in migration 4. That asymmetry is the point: anyone may send,
+ * nobody may scrape the list back, and this query is the only way in.
+ */
+export async function listMessages(
+  filters: MessageFilters = {}
+): Promise<Page<ContactMessageRow>> {
+  const supabase = await createOperatorClient();
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+  const from = (page - 1) * pageSize;
+
+  let query = supabase.from("contact_messages").select("*", { count: "exact" });
+
+  if (filters.search?.trim()) {
+    const term = filters.search.trim().replace(/[(),*]/g, " ");
+    query = query.or(
+      `name.ilike.%${term}%,email.ilike.%${term}%,subject.ilike.%${term}%,order_reference.ilike.%${term}%`
+    );
+  }
+
+  if (filters.status && filters.status !== "all") {
+    query = query.eq("status", filters.status);
+  }
+
+  query = query.order("created_at", {
+    ascending: filters.sort === "oldest",
+  });
+
+  const { data, count, error } = await query.range(from, from + pageSize - 1);
+  if (error) {
+    logQueryFailure("message list", error);
+    return toPage<ContactMessageRow>([], 0, page, pageSize);
+  }
+
+  return toPage(data as ContactMessageRow[], count, page, pageSize);
+}
+
+/**
+ * How many messages sit in each status.
+ *
+ * Four `head: true` counts rather than reading every row and tallying in
+ * memory: the inbox is unbounded, and the badge on an empty filter should not
+ * cost a full table read. PostgREST returns the count in a header, so these
+ * transfer no rows at all.
+ */
+export async function getMessageCounts(): Promise<MessageCounts> {
+  const supabase = await createOperatorClient();
+
+  const count = async (status?: MessageStatusDb) => {
+    let query = supabase
+      .from("contact_messages")
+      .select("id", { count: "exact", head: true });
+    if (status) query = query.eq("status", status);
+
+    const { count: total, error } = await query;
+    if (error) {
+      logQueryFailure("message count", error);
+      return 0;
+    }
+    return total ?? 0;
+  };
+
+  const [all, unread, inProgress, resolved] = await Promise.all([
+    count(),
+    count("new"),
+    count("in-progress"),
+    count("resolved"),
+  ]);
+
+  return { all, new: unread, "in-progress": inProgress, resolved };
+}
+
+/* ------------------------------------------------------------- appointments */
+
+export interface AppointmentFilters {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: "all" | AppointmentStatusDb;
+  mode?: "all" | "in-person" | "video";
+  boutique?: string;
+  /** "upcoming" sorts by the date being asked for; the rest by arrival. */
+  sort?: "upcoming" | "recent" | "oldest";
+}
+
+export interface AppointmentCounts {
+  all: number;
+  requested: number;
+  confirmed: number;
+  /** Confirmed or requested, with a preferred date already in the past. */
+  overdue: number;
+}
+
+/**
+ * An appointment with `overdue` already decided.
+ *
+ * Resolved here rather than in the page for the same reason as
+ * `ArticleListRow`: working it out needs the clock, and reading the clock
+ * during render is the impurity React's linter objects to. Doing it once per
+ * query also means every row in a table is judged against the same instant,
+ * which a per-row `Date.now()` would not guarantee.
+ */
+export interface AppointmentListRow extends AppointmentRow {
+  /** Still open, and the time being held has passed. */
+  is_overdue: boolean;
+}
+
+/**
+ * The appointment diary.
+ *
+ * `appointments` is write-only to the public and admin-only to read — the same
+ * asymmetry as `contact_messages`, and for a sharper reason: a readable diary
+ * discloses who is visiting which boutique and when.
+ */
+export async function listAppointments(
+  filters: AppointmentFilters = {}
+): Promise<Page<AppointmentListRow>> {
+  const supabase = await createOperatorClient();
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+  const from = (page - 1) * pageSize;
+  const now = new Date().toISOString();
+
+  let query = supabase.from("appointments").select("*", { count: "exact" });
+
+  if (filters.search?.trim()) {
+    const term = filters.search.trim().replace(/[(),*]/g, " ");
+    query = query.or(
+      `name.ilike.%${term}%,email.ilike.%${term}%,reference.ilike.%${term}%,interest.ilike.%${term}%`
+    );
+  }
+
+  if (filters.status && filters.status !== "all") {
+    query = query.eq("status", filters.status);
+  }
+  if (filters.mode && filters.mode !== "all") query = query.eq("mode", filters.mode);
+  if (filters.boutique) query = query.eq("boutique", filters.boutique);
+
+  switch (filters.sort) {
+    case "recent":
+      query = query.order("created_at", { ascending: false });
+      break;
+    case "oldest":
+      query = query.order("created_at", { ascending: true });
+      break;
+    default:
+      // Soonest first: the diary is read to answer "what is next", and a
+      // request for tomorrow matters more than one that arrived first.
+      query = query.order("preferred_at", { ascending: true });
+  }
+
+  const { data, count, error } = await query.range(from, from + pageSize - 1);
+  if (error) {
+    logQueryFailure("appointment list", error);
+    return toPage<AppointmentListRow>([], 0, page, pageSize);
+  }
+
+  const rows = (data as AppointmentRow[]).map((appointment) => ({
+    ...appointment,
+    is_overdue:
+      (appointment.status === "requested" || appointment.status === "confirmed") &&
+      // The agreed time if there is one, otherwise the time being asked for.
+      (appointment.confirmed_at ?? appointment.preferred_at) < now,
+  }));
+
+  return toPage(rows, count, page, pageSize);
+}
+
+export async function getAppointmentCounts(): Promise<AppointmentCounts> {
+  const supabase = await createOperatorClient();
+  const now = new Date().toISOString();
+
+  const base = () =>
+    supabase.from("appointments").select("id", { count: "exact", head: true });
+
+  const run = async (query: ReturnType<typeof base>) => {
+    const { count, error } = await query;
+    if (error) {
+      logQueryFailure("appointment count", error);
+      return 0;
+    }
+    return count ?? 0;
+  };
+
+  const [all, requested, confirmed, overdue] = await Promise.all([
+    run(base()),
+    run(base().eq("status", "requested")),
+    run(base().eq("status", "confirmed")),
+    // Still open, and the date being asked for has passed. This is the number
+    // that means somebody has been left waiting.
+    run(base().in("status", ["requested", "confirmed"]).lt("preferred_at", now)),
+  ]);
+
+  return { all, requested, confirmed, overdue };
+}
+
+/** Distinct boutiques with a booking against them, for the filter control. */
+export async function listAppointmentBoutiques(): Promise<string[]> {
+  const supabase = await createOperatorClient();
+  const { data, error } = await supabase
+    .from("appointments")
+    .select("boutique")
+    .not("boutique", "is", null);
+
+  if (error) {
+    logQueryFailure("appointment boutiques", error);
+    return [];
+  }
+
+  const boutiques = new Set(
+    (data as { boutique: string | null }[])
+      .map((row) => row.boutique?.trim())
+      .filter((value): value is string => Boolean(value))
+  );
+
+  return [...boutiques].sort((a, b) => a.localeCompare(b));
+}
+
+/* -------------------------------------------------------------- subscribers */
+
+export interface SubscriberFilters {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: "all" | "subscribed" | "unsubscribed" | "unconfirmed";
+  source?: string;
+  sort?: "recent" | "oldest" | "email";
+}
+
+export interface SubscriberCounts {
+  all: number;
+  subscribed: number;
+  unsubscribed: number;
+  unconfirmed: number;
+}
+
+/**
+ * The mailing list.
+ *
+ * Unsubscribing sets `unsubscribed_at` rather than deleting the row. That is
+ * not sentimentality about data: a deleted row is indistinguishable from
+ * someone who never subscribed, so the next import or signup form would
+ * happily add them back to a list they asked to leave.
+ */
+export async function listSubscribers(
+  filters: SubscriberFilters = {}
+): Promise<Page<NewsletterSubscriberRow>> {
+  const supabase = await createOperatorClient();
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+  const from = (page - 1) * pageSize;
+
+  let query = supabase
+    .from("newsletter_subscribers")
+    .select("*", { count: "exact" });
+
+  if (filters.search?.trim()) {
+    const term = filters.search.trim().replace(/[(),*]/g, " ");
+    query = query.ilike("email", `%${term}%`);
+  }
+
+  if (filters.source) query = query.eq("source", filters.source);
+
+  switch (filters.status) {
+    case "subscribed":
+      query = query.is("unsubscribed_at", null);
+      break;
+    case "unsubscribed":
+      query = query.not("unsubscribed_at", "is", null);
+      break;
+    case "unconfirmed":
+      query = query.eq("is_confirmed", false).is("unsubscribed_at", null);
+      break;
+  }
+
+  switch (filters.sort) {
+    case "oldest":
+      query = query.order("created_at", { ascending: true });
+      break;
+    case "email":
+      query = query.order("email", { ascending: true });
+      break;
+    default:
+      query = query.order("created_at", { ascending: false });
+  }
+
+  const { data, count, error } = await query.range(from, from + pageSize - 1);
+  if (error) {
+    logQueryFailure("subscriber list", error);
+    return toPage<NewsletterSubscriberRow>([], 0, page, pageSize);
+  }
+
+  return toPage(data as NewsletterSubscriberRow[], count, page, pageSize);
+}
+
+export async function getSubscriberCounts(): Promise<SubscriberCounts> {
+  const supabase = await createOperatorClient();
+
+  const base = () =>
+    supabase
+      .from("newsletter_subscribers")
+      .select("id", { count: "exact", head: true });
+
+  const run = async (query: ReturnType<typeof base>) => {
+    const { count, error } = await query;
+    if (error) {
+      logQueryFailure("subscriber count", error);
+      return 0;
+    }
+    return count ?? 0;
+  };
+
+  const [all, subscribed, unsubscribed, unconfirmed] = await Promise.all([
+    run(base()),
+    run(base().is("unsubscribed_at", null)),
+    run(base().not("unsubscribed_at", "is", null)),
+    run(base().eq("is_confirmed", false).is("unsubscribed_at", null)),
+  ]);
+
+  return { all, subscribed, unsubscribed, unconfirmed };
+}
+
+/** Distinct signup sources, for the filter control. */
+export async function listSubscriberSources(): Promise<string[]> {
+  const supabase = await createOperatorClient();
+  const { data, error } = await supabase
+    .from("newsletter_subscribers")
+    .select("source");
+
+  if (error) {
+    logQueryFailure("subscriber sources", error);
+    return [];
+  }
+
+  const sources = new Set(
+    (data as { source: string }[])
+      .map((row) => row.source?.trim())
+      .filter((value): value is string => Boolean(value))
+  );
+
+  return [...sources].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Every subscribed address, for export.
+ *
+ * Not paged, and deliberately separate from `listSubscribers`: an export is a
+ * different operation from a list view, and reusing the paged query would mean
+ * an operator quietly exporting page one and believing it was the list.
+ *
+ * Capped. A mailing list large enough to exceed this wants a background job,
+ * not a Server Action holding a response open.
+ */
+export async function getSubscriberExport(): Promise<
+  Pick<NewsletterSubscriberRow, "email" | "source" | "created_at">[]
+> {
+  const supabase = await createOperatorClient();
+  const { data, error } = await supabase
+    .from("newsletter_subscribers")
+    .select("email, source, created_at")
+    .is("unsubscribed_at", null)
+    .order("created_at", { ascending: false })
+    .limit(10_000);
+
+  if (error) {
+    logQueryFailure("subscriber export", error);
+    return [];
+  }
+
+  return data as Pick<
+    NewsletterSubscriberRow,
+    "email" | "source" | "created_at"
+  >[];
+}
+
+/* -------------------------------------------------------------------- POS */
+
+/** A sellable line at the counter. */
+export interface PosItem {
+  variant_id: string;
+  product_name: string;
+  variant_title: string;
+  sku: string;
+  price: number;
+  inventory_quantity: number;
+  image_path: string | null;
+}
+
+/**
+ * Everything sellable, for the till's search.
+ *
+ * Loaded whole and filtered in the browser rather than queried per keystroke.
+ * A counter needs the list to respond as fast as somebody types, and a round
+ * trip per character to a database half a second away does not. The ceiling
+ * keeps that honest — past it, this wants a server-side search.
+ *
+ * Out-of-stock variants are included rather than hidden: an operator searching
+ * for something needs to be told it is finished, not shown nothing.
+ */
+export async function listPosItems(): Promise<PosItem[]> {
+  const supabase = await createOperatorClient();
+
+  const { data, error } = await supabase
+    .from("product_variants")
+    .select(
+      "id, sku, title, price, inventory_quantity, products(name, is_active, product_images(storage_path, position))"
+    )
+    .order("sku")
+    .limit(500);
+
+  if (error) {
+    logQueryFailure("POS item list", error);
+    return [];
+  }
+
+  type Joined = {
+    id: string;
+    sku: string;
+    title: string;
+    price: number;
+    inventory_quantity: number;
+    products: {
+      name: string;
+      is_active: boolean;
+      product_images: { storage_path: string; position: number }[] | null;
+    } | null;
+  };
+
+  return (data as unknown as Joined[])
+    // A variant whose product row is gone cannot be sold or named.
+    .filter((row) => row.products !== null)
+    .map((row) => {
+      const images = [...(row.products!.product_images ?? [])].sort(
+        (a, b) => a.position - b.position
+      );
+
+      return {
+        variant_id: row.id,
+        product_name: row.products!.name,
+        variant_title: row.title,
+        sku: row.sku,
+        price: row.price,
+        inventory_quantity: row.inventory_quantity,
+        image_path: images[0]?.storage_path ?? null,
+      } satisfies PosItem;
+    });
+}
+
+/* ------------------------------------------------------------------ sales */
+
+export interface SaleListRow extends SaleRow {
+  item_count: number;
+}
+
+export interface SaleFilters {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  method?: "all" | SalePaymentMethodDb;
+  /** Calendar day boundaries are the operator's, not UTC's. */
+  range?: "all" | "today" | "week";
+}
+
+export interface SalesSummary {
+  todayTotal: number;
+  todayCount: number;
+  weekTotal: number;
+  allCount: number;
+}
+
+export async function listSales(
+  filters: SaleFilters = {}
+): Promise<Page<SaleListRow>> {
+  const supabase = await createOperatorClient();
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+  const from = (page - 1) * pageSize;
+
+  let query = supabase
+    .from("sales")
+    .select("*, sale_items(id)", { count: "exact" });
+
+  if (filters.search?.trim()) {
+    const term = filters.search.trim().replace(/[(),*]/g, " ");
+    query = query.or(
+      `reference.ilike.%${term}%,customer_name.ilike.%${term}%,operator_name.ilike.%${term}%`
+    );
+  }
+
+  if (filters.method && filters.method !== "all") {
+    query = query.eq("payment_method", filters.method);
+  }
+
+  if (filters.range === "today") {
+    query = query.gte("created_at", startOfToday());
+  } else if (filters.range === "week") {
+    query = query.gte("created_at", startOfWeek());
+  }
+
+  const { data, count, error } = await query
+    .order("created_at", { ascending: false })
+    .range(from, from + pageSize - 1);
+
+  if (error) {
+    logQueryFailure("sales list", error);
+    return toPage<SaleListRow>([], 0, page, pageSize);
+  }
+
+  type Joined = SaleRow & { sale_items: { id: string }[] | null };
+
+  const rows = (data as unknown as Joined[]).map((row) => {
+    const { sale_items, ...sale } = row;
+    return { ...sale, item_count: sale_items?.length ?? 0 } satisfies SaleListRow;
+  });
+
+  return toPage(rows, count, page, pageSize);
+}
+
+/** Local midnight, as an ISO instant. */
+function startOfToday(): string {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+}
+
+/** Local midnight seven days ago. */
+function startOfWeek(): string {
+  const now = new Date();
+  return new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() - 6
+  ).toISOString();
+}
+
+export async function getSalesSummary(): Promise<SalesSummary> {
+  const supabase = await createOperatorClient();
+
+  const [today, week, all] = await Promise.all([
+    supabase.from("sales").select("total").gte("created_at", startOfToday()),
+    supabase.from("sales").select("total").gte("created_at", startOfWeek()),
+    supabase.from("sales").select("id", { count: "exact", head: true }),
+  ]);
+
+  if (today.error || week.error || all.error) {
+    logQueryFailure("sales summary", today.error ?? week.error ?? all.error);
+    return { todayTotal: 0, todayCount: 0, weekTotal: 0, allCount: 0 };
+  }
+
+  const sum = (rows: { total: number }[] | null) =>
+    (rows ?? []).reduce((acc, row) => acc + (row.total ?? 0), 0);
+
+  return {
+    todayTotal: sum(today.data),
+    todayCount: (today.data ?? []).length,
+    weekTotal: sum(week.data),
+    allCount: all.count ?? 0,
+  };
+}
+
+/** The lines on one sale, for the receipt view. */
+export async function getSaleItems(saleId: string): Promise<SaleItemRow[]> {
+  const supabase = await createOperatorClient();
+
+  const { data, error } = await supabase
+    .from("sale_items")
+    .select("*")
+    .eq("sale_id", saleId);
+
+  if (error) {
+    logQueryFailure("sale items", error);
+    return [];
+  }
+
+  return data as SaleItemRow[];
 }

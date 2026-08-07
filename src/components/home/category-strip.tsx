@@ -14,7 +14,7 @@ export function CategoryStrip({ categories }: { categories: Category[] }) {
         align="center"
       />
 
-      <ul className="mt-14 grid grid-cols-2 gap-x-5 gap-y-10 md:grid-cols-4 lg:gap-x-8">
+      <ul className="mt-section-gap grid grid-cols-2 gap-x-5 gap-y-10 md:grid-cols-4 lg:gap-x-8">
         {categories.map((category, index) => (
           <li key={category.slug}>
             <Reveal delay={index * 60}>

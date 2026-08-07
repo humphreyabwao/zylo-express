@@ -4,7 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 
 import type { CartLine, CartTotals } from "@/lib/types";
-import { cn, formatPrice, pluralize } from "@/lib/utils";
+import {cn, pluralize} from "@/lib/utils";
+import { useCurrency } from "@/components/commerce/currency-provider";
 import { Separator } from "@/components/ui/separator";
 
 interface OrderSummaryProps {
@@ -23,6 +24,7 @@ export function OrderSummary({
   showLines = false,
   heading = "Order summary",
 }: OrderSummaryProps) {
+  const { format } = useCurrency();
   return (
     <div className={cn("border border-hairline p-6 lg:p-8", className)}>
       <h2 className="eyebrow-sm text-muted-foreground">{heading}</h2>
@@ -58,9 +60,7 @@ export function OrderSummary({
                 </div>
 
                 <p className="shrink-0 text-sm font-semibold tabular-nums">
-                  {formatPrice(line.price * line.quantity, {
-                    currency: line.currency,
-                  })}
+                  {format(line.price * line.quantity)}
                 </p>
               </li>
             ))}
@@ -72,13 +72,13 @@ export function OrderSummary({
       <dl className={cn("space-y-3.5", !showLines && "mt-6")}>
         <Row
           label={`Subtotal (${totals.itemCount} ${pluralize(totals.itemCount, "item")})`}
-          value={formatPrice(totals.subtotal, { currency: totals.currency })}
+          value={format(totals.subtotal)}
         />
 
         {totals.discount > 0 && (
           <Row
             label="Discount"
-            value={`−${formatPrice(totals.discount, { currency: totals.currency })}`}
+            value={`−${format(totals.discount)}`}
             accent
           />
         )}
@@ -88,13 +88,13 @@ export function OrderSummary({
           value={
             totals.shipping === 0
               ? "Complimentary"
-              : formatPrice(totals.shipping, { currency: totals.currency })
+              : format(totals.shipping)
           }
         />
 
         <Row
           label="Estimated tax"
-          value={formatPrice(totals.tax, { currency: totals.currency })}
+          value={format(totals.tax)}
         />
       </dl>
 
@@ -103,7 +103,7 @@ export function OrderSummary({
       <div className="flex items-baseline justify-between gap-4">
         <span className="eyebrow-sm text-foreground">Total</span>
         <span className="text-2xl font-semibold tabular-nums">
-          {formatPrice(totals.total, { currency: totals.currency })}
+          {format(totals.total)}
         </span>
       </div>
 

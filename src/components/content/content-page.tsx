@@ -107,7 +107,7 @@ export function ContentPage({
               </Reveal>
             ))}
 
-            <p className="mt-14 border-t border-hairline pt-8 eyebrow-sm text-muted-foreground">
+            <p className="mt-section-gap border-t border-hairline pt-8 eyebrow-sm text-muted-foreground">
               Last updated {formatDate(page.updated)}
             </p>
 

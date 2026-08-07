@@ -37,7 +37,7 @@ export interface VariantResult {
 
 async function authorise(elevated = false): Promise<VariantResult | null> {
   try {
-    await requireAdminAction({ elevated });
+    await requireAdminAction({ elevated, module: "inventory" });
     return null;
   } catch (error) {
     if (error instanceof AdminAuthorizationError) {

@@ -28,9 +28,111 @@ export interface ProductChange {
   price: number;
 }
 
+export interface CategoryChange {
+  type: "INSERT" | "UPDATE" | "DELETE";
+  categoryId: string;
+  slug: string;
+  isActive: boolean;
+}
+
+export interface CollectionChange {
+  type: "INSERT" | "UPDATE" | "DELETE";
+  collectionId: string;
+  slug: string;
+  isActive: boolean;
+  isFeatured: boolean;
+}
+
+export interface MediaChange {
+  type: "INSERT" | "UPDATE" | "DELETE";
+  imageId: string;
+  productId: string;
+  storagePath: string;
+}
+
+export interface JournalChange {
+  type: "INSERT" | "UPDATE" | "DELETE";
+  articleId: string;
+  slug: string;
+  isPublished: boolean;
+}
+
+export interface PageChange {
+  type: "INSERT" | "UPDATE" | "DELETE";
+  pageId: string;
+  slug: string;
+  section: string;
+  isPublished: boolean;
+}
+
+/**
+ * Deliberately carries no message content — see the `messages` projection in
+ * `src/app/api/realtime/route.ts`. An id and a status, nothing a sender wrote.
+ */
+export interface MessageChange {
+  type: "INSERT" | "UPDATE" | "DELETE";
+  messageId: string;
+  status: "new" | "in-progress" | "resolved";
+}
+
+/** Reference and status only — no name, email or boutique. See the route. */
+export interface AppointmentChange {
+  type: "INSERT" | "UPDATE" | "DELETE";
+  appointmentId: string;
+  reference: string;
+  status: "requested" | "confirmed" | "completed" | "cancelled";
+}
+
+/** Reference and total only — never the customer. See the route. */
+export interface SaleChange {
+  type: "INSERT" | "UPDATE" | "DELETE";
+  saleId: string;
+  reference: string;
+  total: number;
+}
+
+/** Reference and status only — never the address or total. See the route. */
+export interface OrderChange {
+  type: "INSERT" | "UPDATE" | "DELETE";
+  orderId: string;
+  reference: string;
+  status: string;
+}
+
+/** The key that changed, never its value. See the route. */
+export interface SettingsChange {
+  type: "INSERT" | "UPDATE" | "DELETE";
+  key: string;
+}
+
+/** Never carries the email address — a mailing list is not a broadcast. */
+export interface SubscriberChange {
+  type: "INSERT" | "UPDATE" | "DELETE";
+  subscriberId: string;
+  source: string;
+  subscribed: boolean;
+}
+
+/**
+ * Must stay in step with `CHANNELS` in `src/app/api/realtime/route.ts`. The
+ * route rejects an unknown channel with a 400, so a name that exists here and
+ * not there fails as a connection that never opens rather than as a type
+ * error — which is why both lists are short and sit next to their comment.
+ */
 type ChannelMap = {
   inventory: InventoryChange;
   products: ProductChange;
+  orders: OrderChange;
+  sales: SaleChange;
+  categories: CategoryChange;
+  collections: CollectionChange;
+  media: MediaChange;
+  journal: JournalChange;
+  pages: PageChange;
+  messages: MessageChange;
+  appointments: AppointmentChange;
+  subscribers: SubscriberChange;
+  settings: SettingsChange;
 };
 
 export function useRealtime<C extends keyof ChannelMap>(

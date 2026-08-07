@@ -1,6 +1,5 @@
 import { ShieldCheck } from "lucide-react";
 
-import { formatDate } from "@/lib/utils";
 import { requireAdmin } from "@/lib/admin/guard";
 import { listStaff, normalisePage } from "@/lib/admin/queries";
 import { ROLE_DESCRIPTION, ROLE_LABEL, ROLE_TONE } from "@/lib/admin/status";
@@ -18,6 +17,8 @@ import {
 import { ListToolbar } from "@/components/admin/toolbar";
 import { Pagination } from "@/components/admin/pagination";
 import { StaffRoleControl } from "@/components/admin/staff-role-control";
+import { StaffCreateButton } from "@/components/admin/staff-create";
+import { StaffActions } from "@/components/admin/staff-actions";
 
 export const metadata = { title: "Staff" };
 
@@ -26,7 +27,7 @@ export default async function AdminStaffPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const identity = await requireAdmin();
+  const identity = await requireAdmin("staff");
 
   const params = await searchParams;
   const read = (key: string) => {
@@ -42,10 +43,9 @@ export default async function AdminStaffPage({
 
   return (
     <>
-      <PageHeader
-        title="Staff"
-        description="Who can sign in to this portal, and what they are permitted to do."
-      />
+      <PageHeader title="Staff">
+        <StaffCreateButton />
+      </PageHeader>
 
       {/* Roles are stated rather than implied. An operator changing somebody's
           role should not have to infer what it grants. */}
@@ -91,8 +91,11 @@ export default async function AdminStaffPage({
               <tr>
                 <Th className="w-[32%]">Name</Th>
                 <Th>Email</Th>
-                <Th>Joined</Th>
+                <Th>Modules</Th>
                 <Th align="right">Role</Th>
+                <Th align="right" className="w-16">
+                  <span className="sr-only">Actions</span>
+                </Th>
               </tr>
             </thead>
 
@@ -112,7 +115,12 @@ export default async function AdminStaffPage({
                         </span>
 
                         <span className="min-w-0">
-                          <span className="block truncate font-medium">{name}</span>
+                          <span className="flex items-center gap-2">
+                            <span className="truncate font-medium">{name}</span>
+                            {person.suspended && (
+                              <Badge tone="critical">Suspended</Badge>
+                            )}
+                          </span>
                           {isSelf && (
                             <span className="text-[0.6875rem] font-medium text-champagne-dark">
                               That&rsquo;s you
@@ -124,12 +132,21 @@ export default async function AdminStaffPage({
 
                     <Td className="text-admin-muted">{person.email}</Td>
 
-                    <Td className="admin-figure text-admin-faint">
-                      {formatDate(person.created_at, {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
+                    <Td>
+                      {person.role === "superadmin" ? (
+                        <span className="text-[0.75rem] text-admin-muted">
+                          Everything
+                        </span>
+                      ) : (person.permissions ?? []).length === 0 ? (
+                        <span className="text-[0.75rem] text-admin-faint">
+                          Overview only
+                        </span>
+                      ) : (
+                        <span className="admin-figure text-[0.75rem] text-admin-muted">
+                          {(person.permissions ?? []).length} module
+                          {(person.permissions ?? []).length === 1 ? "" : "s"}
+                        </span>
+                      )}
                     </Td>
 
                     <Td align="right">
@@ -145,6 +162,12 @@ export default async function AdminStaffPage({
                             : "Only administrators can change roles."
                         }
                       />
+                    </Td>
+
+                    <Td align="right">
+                      {identity.canElevate && (
+                        <StaffActions account={person} isSelf={isSelf} />
+                      )}
                     </Td>
                   </Tr>
                 );

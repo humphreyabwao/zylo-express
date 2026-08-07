@@ -62,7 +62,178 @@ const CHANNELS = {
       price: row.price,
     }),
   },
+  orders: {
+    table: "orders",
+    /**
+     * Reference and status only.
+     *
+     * An order row carries a shipping address and a total. Migration 8 put the
+     * table in the publication so the dashboard could react to new checkouts,
+     * and the projection is what keeps that from meaning "broadcast every
+     * order to every open browser". The admin re-reads through the RLS-bound
+     * path.
+     */
+    project: (row: Record<string, unknown>) => ({
+      orderId: row.id,
+      reference: row.reference,
+      status: row.status,
+    }),
+  },
+  sales: {
+    table: "sales",
+    /**
+     * Reference and total only — no customer name or email.
+     *
+     * The till and the sales list both watch this so a second terminal, or the
+     * office, sees a sale the moment it is rung up.
+     */
+    project: (row: Record<string, unknown>) => ({
+      saleId: row.id,
+      reference: row.reference,
+      total: row.total,
+    }),
+  },
+  categories: {
+    table: "categories",
+    project: (row: Record<string, unknown>) => ({
+      categoryId: row.id,
+      slug: row.slug,
+      isActive: row.is_active,
+    }),
+  },
+  collections: {
+    table: "collections",
+    project: (row: Record<string, unknown>) => ({
+      collectionId: row.id,
+      slug: row.slug,
+      isActive: row.is_active,
+      isFeatured: row.is_featured,
+    }),
+  },
+  media: {
+    table: "product_images",
+    project: (row: Record<string, unknown>) => ({
+      imageId: row.id,
+      productId: row.product_id,
+      // The path, not a URL. A subscriber that wants to render it resolves it
+      // through `storageUrl` like every other read path does.
+      storagePath: row.storage_path,
+    }),
+  },
+  journal: {
+    table: "articles",
+    project: (row: Record<string, unknown>) => ({
+      articleId: row.id,
+      slug: row.slug,
+      isPublished: row.is_published,
+    }),
+  },
+  pages: {
+    table: "content_pages",
+    project: (row: Record<string, unknown>) => ({
+      pageId: row.id,
+      slug: row.slug,
+      section: row.section,
+      isPublished: row.is_published,
+    }),
+  },
+  messages: {
+    table: "contact_messages",
+    /**
+     * Status and nothing else.
+     *
+     * This is the one channel carrying a table of personal data — a name, an
+     * email address and whatever the sender chose to write. Broadcasting any
+     * of that would hand it to every browser holding the page open, and the
+     * subscription runs on the service key so RLS would not stop it. The id
+     * is enough: a client that is allowed to see the message re-fetches it
+     * through the admin read path, which is RLS-bound.
+     */
+    project: (row: Record<string, unknown>) => ({
+      messageId: row.id,
+      status: row.status,
+    }),
+  },
+  appointments: {
+    table: "appointments",
+    /**
+     * Reference and status only.
+     *
+     * Same reasoning as `messages`: the diary records who is visiting which
+     * boutique and when, which is exactly the pattern-of-life detail not to
+     * fan out to every open browser. The reference is already quoted back to
+     * the customer, so it discloses nothing further, and it gives an operator
+     * something to recognise in a notification. Anything more is re-fetched
+     * through the RLS-bound admin read.
+     */
+    project: (row: Record<string, unknown>) => ({
+      appointmentId: row.id,
+      reference: row.reference,
+      status: row.status,
+    }),
+  },
+  subscribers: {
+    table: "newsletter_subscribers",
+    /**
+     * Deliberately not the email address.
+     *
+     * A mailing list broadcast over a channel any signed-in browser can open
+     * is a mailing list that has left the building. The id is enough to say
+     * "the audience changed"; the list itself stays behind the admin-only
+     * select policy.
+     */
+    project: (row: Record<string, unknown>) => ({
+      subscriberId: row.id,
+      source: row.source,
+      subscribed: row.unsubscribed_at === null,
+    }),
+  },
+  settings: {
+    table: "site_settings",
+    /**
+     * The key only, never the value.
+     *
+     * This is the one channel a *storefront* visitor subscribes to — the
+     * currency provider listens on it so an admin changing the store currency
+     * reaches tabs that are already open. Everything in `site_settings` is
+     * publicly readable today, but broadcasting values would mean the day
+     * somebody adds a key that should not be public, it is already on the
+     * wire. The key is enough to say "re-read the settings".
+     */
+    project: (row: Record<string, unknown>) => ({ key: row.key }),
+  },
 } as const;
+
+/**
+ * Which cache tags a channel's traffic invalidates.
+ *
+ * Previously every change dropped `products` and `facets` regardless of what
+ * moved, which was correct only because those were the only two tables being
+ * watched. A category rename has to drop `categories` or the storefront nav
+ * keeps the old name for an hour — and dropping `products` for a media upload
+ * evicts the whole catalogue to fix one image.
+ */
+const CHANNEL_TAGS: Record<ChannelName, string[]> = {
+  inventory: [CacheTags.products, CacheTags.facets],
+  // Stock is decremented on checkout, so a new order changes the catalogue.
+  orders: [CacheTags.products, CacheTags.facets],
+  // A counter sale decrements stock, so availability everywhere is stale.
+  sales: [CacheTags.products, CacheTags.facets],
+  products: [CacheTags.products, CacheTags.facets],
+  categories: [CacheTags.categories, CacheTags.products, CacheTags.facets],
+  collections: [CacheTags.collections, CacheTags.products],
+  media: [CacheTags.products],
+  journal: [CacheTags.articles],
+  pages: [CacheTags.pages],
+  // Nothing on the storefront reads these, so there is no cached view to drop.
+  // The events exist purely to wake the admin lists.
+  messages: [],
+  appointments: [],
+  subscribers: [],
+  // Prices, shipping thresholds and the announcement bar all read these, so
+  // the whole catalogue view is downstream of a settings change.
+  settings: [CacheTags.settings, CacheTags.products, CacheTags.facets],
+};
 
 type ChannelName = keyof typeof CHANNELS;
 
@@ -117,10 +288,10 @@ export async function GET(request: Request) {
               ...channel.project(row),
             });
 
-            // A row changed, so the cached catalogue is now wrong. Dropping
-            // the tag here means the next reader rebuilds from Postgres
-            // instead of serving a stale price or stock state.
-            void invalidateTags([CacheTags.products, CacheTags.facets]);
+            // A row changed, so the cached view of it is now wrong. Dropping
+            // the tags here means the next reader rebuilds from Postgres
+            // instead of serving a stale price, name or stock state.
+            void invalidateTags(CHANNEL_TAGS[requested as ChannelName]);
           }
         )
         .subscribe();

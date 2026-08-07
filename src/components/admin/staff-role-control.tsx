@@ -18,6 +18,13 @@ import type { UserRoleDb } from "@/lib/supabase/types";
  * say.
  */
 
+/**
+ * Superadmin is deliberately absent.
+ *
+ * It is the tier that grants every other tier, so handing it out from a row
+ * dropdown makes it one mis-click from an account that cannot be reined back
+ * in by anyone but itself. It is set in SQL — see migration 17.
+ */
 const ROLES: UserRoleDb[] = ["admin", "staff", "customer"];
 
 export function StaffRoleControl({

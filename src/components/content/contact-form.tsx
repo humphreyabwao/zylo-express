@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
 import { contactSchema, type ContactValues } from "@/lib/validation";
+import { submitContactMessage } from "@/app/actions/contact";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -22,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 export function ContactForm() {
   const [sent, setSent] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   const form = useForm<ContactValues>({
     resolver: zodResolver(contactSchema),
@@ -35,11 +37,35 @@ export function ContactForm() {
     },
   });
 
-  // Posted to a Supabase Edge Function in the backend phase, which writes the
-  // enquiry and notifies the advisor queue.
-  const onSubmit = async () => {
-    await new Promise((resolve) => setTimeout(resolve, 900));
-    setSent(true);
+  /**
+   * Writes the enquiry to `contact_messages`, where the admin inbox reads it.
+   *
+   * This used to `await` a 900ms timeout and declare success. Every message a
+   * customer sent was discarded in the browser, and the confirmation panel
+   * below — "Your message is with us" — was false every single time.
+   *
+   * The action re-validates everything this form validates. `contactSchema`
+   * here is for the typing experience; the server's copy is the one that
+   * decides, because a Server Action is a public endpoint whatever the UI in
+   * front of it does.
+   */
+  const onSubmit = async (values: ContactValues) => {
+    const result = await submitContactMessage(values);
+
+    if (result.ok) {
+      setSent(true);
+      return;
+    }
+
+    // Field errors land on their fields; anything else goes above the button,
+    // where it is next to the thing that failed rather than in a toast the
+    // sender has to catch.
+    if (result.fieldErrors) {
+      for (const [field, message] of Object.entries(result.fieldErrors)) {
+        form.setError(field as keyof ContactValues, { message });
+      }
+    }
+    setError(result.fieldErrors ? null : result.message);
   };
 
   if (sent) {
@@ -70,7 +96,10 @@ export function ContactForm() {
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(onSubmit)}
+        onSubmit={(event) => {
+          setError(null);
+          void form.handleSubmit(onSubmit)(event);
+        }}
         className="space-y-7"
         noValidate
       >
@@ -148,6 +177,15 @@ export function ContactForm() {
             </FormItem>
           )}
         />
+
+        {error && (
+          <p
+            role="alert"
+            className="border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm font-light leading-relaxed text-destructive"
+          >
+            {error}
+          </p>
+        )}
 
         <Button
           type="submit"

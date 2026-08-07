@@ -1,7 +1,8 @@
 "use client";
 
 import { amountToFreeShipping, freeShippingProgress } from "@/lib/pricing";
-import { cn, formatPrice } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { useCurrency } from "@/components/commerce/currency-provider";
 
 export function FreeShippingMeter({
   subtotal,
@@ -10,8 +11,11 @@ export function FreeShippingMeter({
   subtotal: number;
   className?: string;
 }) {
-  const remaining = amountToFreeShipping(subtotal);
-  const progress = freeShippingProgress(subtotal);
+  const { format, freeShippingThreshold } = useCurrency();
+  // The live threshold, not the bundled constant, so editing it in
+  // Settings moves the meter as well as the charge.
+  const remaining = amountToFreeShipping(subtotal, freeShippingThreshold);
+  const progress = freeShippingProgress(subtotal, freeShippingThreshold);
   const unlocked = remaining === 0;
 
   return (
@@ -23,7 +27,7 @@ export function FreeShippingMeter({
           </span>
         ) : (
           <>
-            {formatPrice(remaining)} more for complimentary delivery
+            {format(remaining)} more for complimentary delivery
           </>
         )}
       </p>

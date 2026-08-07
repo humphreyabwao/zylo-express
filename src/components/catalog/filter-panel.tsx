@@ -4,7 +4,8 @@ import * as React from "react";
 
 import type { CatalogFacets } from "@/lib/types";
 import { useCatalogFilters } from "@/hooks/use-catalog-filters";
-import { cn, formatPrice } from "@/lib/utils";
+import {cn} from "@/lib/utils";
+import { useCurrency } from "@/components/commerce/currency-provider";
 import {
   Accordion,
   AccordionContent,
@@ -29,6 +30,7 @@ const PRICE_BANDS = [
 ];
 
 export function FilterPanel({ facets, hide = [], className }: FilterPanelProps) {
+  const { format } = useCurrency();
   const {
     filters,
     toggleValue,
@@ -213,8 +215,8 @@ export function FilterPanel({ facets, hide = [], className }: FilterPanelProps) 
             </ul>
 
             <p className="mt-5 text-xs font-light text-muted-foreground">
-              This selection ranges {formatPrice(facets.priceRange.min)} –{" "}
-              {formatPrice(facets.priceRange.max)}.
+              This selection ranges {format(facets.priceRange.min)} –{" "}
+              {format(facets.priceRange.max)}.
             </p>
           </AccordionContent>
         </AccordionItem>

@@ -1,22 +1,23 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { HELP_PAGES } from "@/data/content";
+import { getContentPage, getContentPages } from "@/lib/content";
 import { ContentPage } from "@/components/content/content-page";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-export function generateStaticParams() {
-  return HELP_PAGES.map((page) => ({ slug: page.slug }));
+export async function generateStaticParams() {
+  const pages = await getContentPages("help");
+  return pages.map((page) => ({ slug: page.slug }));
 }
 
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const page = HELP_PAGES.find((p) => p.slug === slug);
+  const page = await getContentPage("help", slug);
   if (!page) return { title: "Not found" };
 
   return {
@@ -28,7 +29,14 @@ export async function generateMetadata({
 
 export default async function HelpArticlePage({ params }: PageProps) {
   const { slug } = await params;
-  const page = HELP_PAGES.find((p) => p.slug === slug);
+
+  // Both reads hit the same cache entry — `getContentPage` filters the list
+  // `getContentPages` returns — so this is one query, not two.
+  const [page, siblings] = await Promise.all([
+    getContentPage("help", slug),
+    getContentPages("help"),
+  ]);
+
   if (!page) notFound();
 
   return (
@@ -40,7 +48,8 @@ export default async function HelpArticlePage({ params }: PageProps) {
         { label: page.title },
       ]}
       siblings={[
-        ...HELP_PAGES.map((p) => ({ label: p.title, href: `/help/${p.slug}` })),
+        ...siblings.map((p) => ({ label: p.title, href: `/help/${p.slug}` })),
+        // Not a content page: /help/contact is a form with its own route.
         { label: "Contact Us", href: "/help/contact" },
       ]}
       activeHref={`/help/${page.slug}`}

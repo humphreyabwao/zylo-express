@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BadgePercent,
+  CalendarDays,
   FileText,
   Image as ImageIcon,
   LayoutDashboard,
@@ -8,6 +9,9 @@ import {
   Mail,
   Newspaper,
   Package,
+  Radio,
+  Receipt as ReceiptIcon,
+  ScanLine,
   Receipt,
   Settings,
   ShieldCheck,
@@ -82,21 +86,35 @@ export const ADMIN_NAV: AdminModuleGroup[] = [
         label: "Categories",
         icon: Tags,
         description: "The primary navigation taxonomy",
-        pending: true,
       },
       {
         segment: "collections",
         label: "Collections",
         icon: Layers,
         description: "Curated groupings and campaigns",
-        pending: true,
       },
       {
         segment: "media",
         label: "Media",
         icon: ImageIcon,
         description: "Product photography and editorial plates",
-        pending: true,
+      },
+    ],
+  },
+  {
+    label: "Retail",
+    modules: [
+      {
+        segment: "pos",
+        label: "Point of sale",
+        icon: ScanLine,
+        description: "Ring up a counter sale",
+      },
+      {
+        segment: "sales",
+        label: "Sales",
+        icon: ReceiptIcon,
+        description: "Counter takings and their history",
       },
     ],
   },
@@ -120,7 +138,12 @@ export const ADMIN_NAV: AdminModuleGroup[] = [
         label: "Customers",
         icon: Users,
         description: "Accounts, orders and lifetime value",
-        pending: true,
+      },
+      {
+        segment: "appointments",
+        label: "Appointments",
+        icon: CalendarDays,
+        description: "Private appointment requests and the diary",
       },
     ],
   },
@@ -132,21 +155,24 @@ export const ADMIN_NAV: AdminModuleGroup[] = [
         label: "Journal",
         icon: Newspaper,
         description: "Editorial articles and their scheduling",
-        pending: true,
       },
       {
         segment: "pages",
         label: "Pages",
         icon: FileText,
         description: "Help centre and legal copy",
-        pending: true,
       },
       {
         segment: "messages",
         label: "Messages",
         icon: Mail,
         description: "Contact enquiries and their status",
-        pending: true,
+      },
+      {
+        segment: "subscribers",
+        label: "Subscribers",
+        icon: Radio,
+        description: "The mailing list and its consent record",
       },
     ],
   },
@@ -164,7 +190,6 @@ export const ADMIN_NAV: AdminModuleGroup[] = [
         label: "Settings",
         icon: Settings,
         description: "Storefront configuration",
-        pending: true,
       },
     ],
   },
@@ -201,4 +226,29 @@ export function moduleForPath(pathname: string): AdminModule | undefined {
         trimmed === moduleHref(m.segment) ||
         trimmed.startsWith(`${moduleHref(m.segment)}/`)
     );
+}
+
+/**
+ * The nav, filtered to the modules an operator holds.
+ *
+ * Takes segments rather than a predicate so it can be called from a Client
+ * Component — a predicate closing over server state cannot cross the boundary,
+ * and neither can the icons on these modules, which is why the filtering
+ * happens here rather than being passed in pre-built.
+ *
+ * Groups left empty are dropped: a heading over nothing tells an operator
+ * there is something there they cannot see, which is worse than silence.
+ *
+ * Presentation only. Access is decided by the page and action guards.
+ */
+export function buildNav(permitted: readonly string[]): AdminModuleGroup[] {
+  const held = new Set(permitted);
+
+  return ADMIN_NAV.map((group) => ({
+    ...group,
+    // The overview has no segment and belongs to anyone who can sign in.
+    modules: group.modules.filter(
+      (module) => module.segment === "" || held.has(module.segment)
+    ),
+  })).filter((group) => group.modules.length > 0);
 }

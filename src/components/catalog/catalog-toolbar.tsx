@@ -6,7 +6,8 @@ import type { CatalogFacets, ProductFlag, SortKey } from "@/lib/types";
 import { SORT_OPTIONS, activeFilterCount, flagLabel } from "@/lib/filters";
 import { useCatalogFilters } from "@/hooks/use-catalog-filters";
 import { useUiStore } from "@/store/ui-store";
-import { cn, formatPrice, pluralize } from "@/lib/utils";
+import {cn, pluralize} from "@/lib/utils";
+import { useCurrency } from "@/components/commerce/currency-provider";
 import {
   Select,
   SelectContent,
@@ -26,6 +27,7 @@ export function CatalogToolbar({
   facets,
   className,
 }: CatalogToolbarProps) {
+  const { format } = useCurrency();
   const { filters, setSort, clearAll, removeValue } = useCatalogFilters();
   const openFilters = useUiStore((s) => s.openFilters);
   const count = activeFilterCount(filters);
@@ -78,10 +80,10 @@ export function CatalogToolbar({
       key: "price",
       label:
         typeof filters.minPrice === "number" && typeof filters.maxPrice === "number"
-          ? `${formatPrice(filters.minPrice)} – ${formatPrice(filters.maxPrice)}`
+          ? `${format(filters.minPrice)} – ${format(filters.maxPrice)}`
           : typeof filters.maxPrice === "number"
-            ? `Under ${formatPrice(filters.maxPrice)}`
-            : `Above ${formatPrice(filters.minPrice!)}`,
+            ? `Under ${format(filters.maxPrice)}`
+            : `Above ${format(filters.minPrice!)}`,
     });
   }
 

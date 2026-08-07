@@ -1,4 +1,4 @@
-import { formatDate, formatPrice } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { requireAdmin } from "@/lib/admin/guard";
 import {
   listPromotions,
@@ -15,6 +15,7 @@ import {
   Th,
   Tr,
 } from "@/components/admin/primitives";
+import { Money } from "@/components/admin/admin-currency";
 import { Pagination } from "@/components/admin/pagination";
 
 export const metadata = { title: "Promotions" };
@@ -30,7 +31,7 @@ const STATE_LABEL: Record<PromotionState, string> = {
 /** A discount is expressed differently per kind; one place decides how. */
 function describeValue(kind: string, value: number) {
   if (kind === "percentage") return `${value}% off`;
-  if (kind === "fixed") return `${formatPrice(value)} off`;
+  if (kind === "fixed") return `$<Money amount={value} /> off`;
   return "Free shipping";
 }
 
@@ -39,7 +40,7 @@ export default async function AdminPromotionsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
+  await requireAdmin("promotions");
 
   const params = await searchParams;
   const pageParam = Array.isArray(params.page) ? params.page[0] : params.page;
@@ -88,7 +89,7 @@ export default async function AdminPromotionsPage({
 
                     <Td className="admin-figure text-admin-muted">
                       {promotion.minimum_subtotal > 0
-                        ? formatPrice(promotion.minimum_subtotal)
+                        ? <Money amount={promotion.minimum_subtotal} />
                         : "—"}
                     </Td>
 

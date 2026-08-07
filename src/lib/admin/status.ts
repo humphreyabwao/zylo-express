@@ -33,17 +33,45 @@ export const ROLE_TONE: Record<UserRoleDb, Tone> = {
   customer: "neutral",
   staff: "accent",
   admin: "warning",
+  superadmin: "critical",
 };
 
 export const ROLE_LABEL: Record<UserRoleDb, string> = {
   customer: "Customer",
   staff: "Staff",
   admin: "Administrator",
+  superadmin: "Super administrator",
 };
 
 /** What each role may actually do, stated in the interface rather than implied. */
 export const ROLE_DESCRIPTION: Record<UserRoleDb, string> = {
   customer: "Shops the storefront. No portal access.",
-  staff: "Full portal access. Cannot change roles or remove staff.",
-  admin: "Full portal access, including staff and role management.",
+  staff: "Reaches only the modules granted to them.",
+  admin:
+    "Reaches only the modules granted to them, and may delete and edit within those.",
+  superadmin:
+    "Every module, always. Grants and revokes access for everyone else.",
+};
+
+/* -------------------------------------------------------------- POS tender */
+
+/**
+ * Payment-method colours, matching the till's buttons.
+ *
+ * Solid brand tones rather than the semantic badge palette: these identify a
+ * method, they do not rank one. A colour learnt while ringing up should mean
+ * the same thing when reading the day's takings back.
+ */
+export const SALE_METHOD_LABEL: Record<string, string> = {
+  cash: "Cash",
+  card: "Card",
+  mpesa: "M-Pesa",
+  other: "Other",
+};
+
+export const SALE_METHOD_CLASS: Record<string, string> = {
+  cash: "border-forest/30 bg-forest/10 text-forest",
+  card: "border-midnight/30 bg-midnight/10 text-midnight",
+  mpesa: "border-champagne/40 bg-champagne/15 text-champagne-dark",
+  other: "border-wine/30 bg-wine/10 text-wine",
 };

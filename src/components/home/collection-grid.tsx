@@ -23,7 +23,7 @@ export function CollectionGrid({ collections }: { collections: Collection[] }) {
         link={{ href: "/collections", label: "All collections" }}
       />
 
-      <div className="mt-14 grid gap-x-6 gap-y-10 md:grid-cols-2 lg:grid-cols-3 lg:gap-x-8">
+      <div className="mt-section-gap grid gap-x-6 gap-y-10 md:grid-cols-2 lg:grid-cols-3 lg:gap-x-8">
         <Reveal className="md:row-span-2">
           <CollectionCard collection={lead} tall priority />
         </Reveal>

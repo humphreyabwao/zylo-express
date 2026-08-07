@@ -146,16 +146,11 @@ export async function proxy(request: NextRequest) {
 
   // The portal. Its own sign-in page is exempt, or this loops.
   //
-  // Skipped entirely while ADMIN_PREVIEW is on, so the preview bypass still
-  // reaches the portal without a session — the guard makes the same
-  // allowance, and the two must agree or the preview lands on a login page
-  // it is meant to be exempt from.
-  const previewing =
-    process.env.NODE_ENV !== "production" && process.env.ADMIN_PREVIEW === "1";
-
+  // This only checks that *somebody* is signed in. Whether that somebody is
+  // staff is decided by `requireAdmin()` against the database — a session
+  // cookie says who you are, not what you may do.
   if (
     !user &&
-    !previewing &&
     (pathname === ADMIN_ROOT || pathname.startsWith(`${ADMIN_ROOT}/`)) &&
     pathname !== ADMIN_LOGIN
   ) {

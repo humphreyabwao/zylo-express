@@ -10,23 +10,22 @@ import { cn } from "@/lib/utils";
  * of the client bundle matters more here than anywhere else in the app, because
  * a list view renders hundreds of them.
  *
- * ## Radii
+ * ## Surfaces
  *
- * The storefront is square-cornered on purpose: hard edges read as editorial,
- * and that is the right voice for a gallery. A workspace is not a gallery. Flat
- * rectangles butted against each other give an operator no cue about what is a
- * surface and what is a divider, which is most of why this portal read as a
- * wireframe rather than a product.
+ * Structure is carried by hairline rules and whitespace, not by stacked
+ * surfaces. Panels sit flat on the canvas — no radius, no shadow, no raised
+ * shade — because eight rounded, shadowed cards on one screen stop reading as
+ * content and start reading as a field of rectangles.
  *
- * So the portal uses a small, consistent radius scale and nothing else:
+ * Radii survive only on controls, where a corner is affordance rather than
+ * decoration:
  *
- *   rounded-xl   (12px)  panels — the containers everything else sits inside
- *   rounded-lg   (8px)   cards, modals, menus
- *   rounded-md   (6px)   controls: buttons, inputs, selects
- *   rounded      (4px)   badges and other inline chips
+ *   rounded-md   (3px)   buttons, inputs, selects, menus
+ *   rounded      (2px)   badges and inline chips
  *
- * One step of contrast between nesting levels. Anything larger starts to look
- * like a consumer app and stops looking like somewhere money is handled.
+ * Everything larger has been removed. The storefront is square-cornered
+ * because hard edges read as editorial; the portal is square-cornered because
+ * a document is easier to read than a dashboard of tiles.
  */
 
 /* ---------------------------------------------------------------- page head */
@@ -199,15 +198,10 @@ export function Panel({
   return (
     <div
       className={cn(
-        // `overflow-hidden` is what makes the radius hold: a table or a divided
-        // list running to the panel's edge would otherwise square off the
-        // corners it sits in, and the rounding would only appear on empty
-        // panels — which is exactly where nobody looks.
-        "overflow-hidden rounded-xl border border-admin-line bg-admin-panel",
-        // A shadow this faint is not decoration. It is the only cue separating
-        // a panel from the canvas in dark mode, where the two surfaces are
-        // seven points of lightness apart and the border alone disappears.
-        "shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
+        // A hairline and a flat ground — no radius, no shadow, no raised
+        // surface. Eight rounded, shadowed cards on one screen is what made
+        // the portal read as a field of rectangles rather than a document.
+        "overflow-hidden border border-admin-line bg-admin-panel",
         className
       )}
     >
@@ -264,8 +258,12 @@ export function StatCard({
   href,
 }: {
   label: string;
-  value: string;
-  hint?: string;
+  /**
+   * A node, not a string — money figures render through `<Money>` so they
+   * follow the store's configured currency.
+   */
+  value: React.ReactNode;
+  hint?: React.ReactNode;
   tone?: StatTone;
   icon?: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   href?: string;
@@ -277,36 +275,18 @@ export function StatCard({
     critical: "text-destructive",
   };
 
-  const iconTone: Record<StatTone, string> = {
-    neutral: "bg-admin-hover text-admin-muted",
-    positive: "bg-success/10 text-success",
-    warning: "bg-champagne/15 text-champagne-dark",
-    critical: "bg-destructive/10 text-destructive",
-  };
-
   const body = (
     <>
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-admin-faint">
-          {label}
-        </p>
+      <p className="flex items-center gap-2 text-[0.6875rem] font-medium uppercase tracking-[0.16em] text-admin-faint">
+        {Icon && <Icon className="size-3.5" strokeWidth={1.6} />}
+        {label}
+      </p>
 
-        {Icon && (
-          <span
-            className={cn(
-              "grid size-7 shrink-0 place-items-center rounded-lg",
-              iconTone[tone]
-            )}
-            aria-hidden
-          >
-            <Icon className="size-3.5" strokeWidth={2} />
-          </span>
-        )}
-      </div>
-
+      {/* Light weight, large size. A figure carries by scale, not by boldness —
+          a wall of semibold numbers is a wall. */}
       <p
         className={cn(
-          "admin-figure mt-3 text-[1.75rem] font-semibold leading-none tracking-tight",
+          "admin-figure mt-3 text-[2rem] font-light leading-none tracking-tight",
           figureTone[tone]
         )}
       >
@@ -319,15 +299,16 @@ export function StatCard({
     </>
   );
 
+  const shell =
+    "block px-5 py-6 transition-colors duration-200 outline-none";
+
   if (href) {
     return (
       <Link
         href={href}
         className={cn(
-          "block overflow-hidden rounded-xl border border-admin-line bg-admin-panel p-5",
-          "shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors duration-200",
-          "hover:border-admin-line hover:bg-admin-hover",
-          "outline-none focus-visible:ring-2 focus-visible:ring-champagne"
+          shell,
+          "hover:bg-admin-hover focus-visible:bg-admin-hover"
         )}
       >
         {body}
@@ -335,7 +316,33 @@ export function StatCard({
     );
   }
 
-  return <Panel className="p-5">{body}</Panel>;
+  return <div className={shell}>{body}</div>;
+}
+
+/**
+ * A row of figures, divided by hairlines rather than boxed individually.
+ *
+ * The previous arrangement gave each stat its own bordered, shadowed card, so
+ * four metrics produced four rectangles floating on a fifth. One bounding rule
+ * with dividers inside it says the same thing and reads as a single object.
+ */
+export function StatRow({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid divide-y divide-admin-line border border-admin-line bg-admin-panel sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-4">
+      {React.Children.map(children, (child, index) => (
+        <div
+          className={cn(
+            index > 0 && "sm:border-l sm:border-admin-line",
+            // The second item in a 2-up needs its own top rule back when the
+            // grid wraps to two rows.
+            index > 1 && "sm:border-t sm:border-admin-line xl:border-t-0"
+          )}
+        >
+          {child}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------------- badges */

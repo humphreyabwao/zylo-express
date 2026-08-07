@@ -11,7 +11,6 @@ import {
   Users,
 } from "lucide-react";
 
-import { formatPrice } from "@/lib/utils";
 import { requireAdmin } from "@/lib/admin/guard";
 import {
   getDashboardMetrics,
@@ -26,11 +25,13 @@ import {
   Panel,
   PanelHeader,
   StatCard,
+  StatRow,
   Table,
   Td,
   Th,
   Tr,
 } from "@/components/admin/primitives";
+import { Money } from "@/components/admin/admin-currency";
 import { RealtimeRefresh } from "@/components/admin/realtime-refresh";
 import { ORDER_STATUS_TONE } from "@/lib/admin/status";
 
@@ -51,15 +52,20 @@ export default async function AdminDashboardPage() {
     <>
       <PageHeader
         title={`Good day, ${firstName}`}
-        description="Everything trading right now, in one place."
       >
-        <RealtimeRefresh channel="products" label="the shop" />
+        {/* The figures here are sums over products, variants and the
+            inbox, so the page listens on all three — subscribing only to
+            products left revenue and stock counts stale. */}
+        <RealtimeRefresh channel="orders" />
+        <RealtimeRefresh channel="products" />
+        <RealtimeRefresh channel="inventory" />
+        <RealtimeRefresh channel="messages" />
       </PageHeader>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <StatRow>
         <StatCard
           label="Revenue"
-          value={formatPrice(metrics.revenue)}
+          value={<Money amount={metrics.revenue} />}
           hint="Excludes cancelled and refunded orders"
           icon={TrendingUp}
           href="/admin/orders"
@@ -89,7 +95,7 @@ export default async function AdminDashboardPage() {
           icon={PackageCheck}
           href="/admin/products?status=active"
         />
-      </div>
+      </StatRow>
 
       {/* Things wanting attention are separated from the headline figures:
           these are prompts to act, not measures of the business — so each one
@@ -98,7 +104,7 @@ export default async function AdminDashboardPage() {
         Needs attention
       </h2>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <StatRow>
         <StatCard
           label="Out of stock"
           value={String(metrics.outOfStockCount)}
@@ -130,7 +136,7 @@ export default async function AdminDashboardPage() {
           icon={BadgePercent}
           href="/admin/promotions"
         />
-      </div>
+      </StatRow>
 
       <div className="mt-6 grid gap-4 xl:grid-cols-[1.4fr_1fr]">
         <Panel>
@@ -180,7 +186,7 @@ export default async function AdminDashboardPage() {
                       </Badge>
                     </Td>
                     <Td align="right" className="admin-figure font-semibold">
-                      {formatPrice(order.total)}
+                      <Money amount={order.total} />
                     </Td>
                   </Tr>
                 ))}
@@ -226,7 +232,7 @@ export default async function AdminDashboardPage() {
                     </span>
 
                     <span className="admin-figure shrink-0 text-[0.8125rem] font-semibold">
-                      {formatPrice(product.price)}
+                      <Money amount={product.price} />
                     </span>
                   </Link>
                 </li>

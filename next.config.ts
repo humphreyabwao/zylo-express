@@ -100,6 +100,40 @@ const nextConfig: NextConfig = {
     // An SVG from Storage would execute in the image's own origin. We only
     // ever serve raster catalogue photography, so leave this off.
     dangerouslyAllowSVG: false,
+
+    /**
+     * SSRF guard on the image optimiser — disabled in development only.
+     *
+     * Before fetching an upstream image, Next resolves the hostname and
+     * rejects the request if any returned address is non-global. The test is
+     * `ipaddr.parse(ip).range() !== 'unicast'`.
+     *
+     * On a network running DNS64/NAT64 (Cloudflare WARP, an IPv6-only or
+     * mobile-tethered link) the resolver additionally synthesises IPv6
+     * addresses in the `64:ff9b::/96` well-known prefix, which embed the real
+     * IPv4 address in the low 32 bits. So Supabase Storage resolves to:
+     *
+     *   172.64.149.246      -> unicast   (Cloudflare, public)
+     *   104.18.38.10        -> unicast   (Cloudflare, public)
+     *   64:ff9b::ac40:95f6  -> rfc6052   == 172.64.149.246
+     *   64:ff9b::6812:260a  -> rfc6052   == 104.18.38.10
+     *
+     * ipaddr.js labels the last two `rfc6052`, not `unicast`, so the guard
+     * trips and every product image 404s with "hostname resolved to private
+     * IP" — even though those are the same two public Cloudflare addresses
+     * written a different way. It is a false positive, not a real finding.
+     *
+     * Turning the guard off is safe *here* specifically because
+     * `remotePatterns` above is an exact-hostname allowlist with a fixed path
+     * prefix and no wildcards: `/_next/image` cannot be pointed at an
+     * arbitrary host in the first place, which is the SSRF that matters. The
+     * IP check only adds cover against DNS rebinding on that one Supabase
+     * hostname.
+     *
+     * Kept ON in production regardless — deploy targets resolve Supabase to
+     * plain IPv4/IPv6 and never hit this, so there is nothing to trade away.
+     */
+    dangerouslyAllowLocalIP: !isProduction,
   },
 
   experimental: {

@@ -3,7 +3,7 @@ import "server-only";
 import { redirect } from "next/navigation";
 
 import { createClient, getCurrentProfile } from "@/lib/supabase/server";
-import type { ProfileRow, UserRoleDb } from "@/lib/supabase/types";
+import type { ProfileRow } from "@/lib/supabase/types";
 
 /**
  * Authorisation for the admin portal.
@@ -27,11 +27,13 @@ import type { ProfileRow, UserRoleDb } from "@/lib/supabase/types";
  * `src/lib/supabase/server.ts`.
  */
 
-/** Roles permitted into the portal at all. */
-const PORTAL_ROLES: UserRoleDb[] = ["staff", "admin"];
-
-/** Roles permitted to perform destructive or privilege-changing operations. */
-const ELEVATED_ROLES: UserRoleDb[] = ["admin"];
+import {
+  ELEVATED_ROLES,
+  PORTAL_ROLES,
+  canAccessModule,
+  isUnrestricted,
+  type ModuleSegment,
+} from "@/lib/admin/permissions";
 
 export class AdminAuthorizationError extends Error {
   constructor(message = "Not authorised") {
@@ -40,47 +42,16 @@ export class AdminAuthorizationError extends Error {
   }
 }
 
-/**
- * Whether the unlinked-login preview is active.
- *
- * The dashboard is being built before its sign-in flow is wired up, so there
- * has to be some way to see it. That way must not be able to exist in
- * production, hence two conditions rather than one: the flag AND a
- * non-production build. `NODE_ENV` is inlined at build time by Next, so a
- * production bundle cannot be talked into this at runtime by setting an
- * environment variable on the host — the branch is compiled out.
- *
- * Remove `ADMIN_PREVIEW` from `.env.local` the moment the login page is linked.
- */
-export function isPreviewMode(): boolean {
-  return (
-    process.env.NODE_ENV !== "production" && process.env.ADMIN_PREVIEW === "1"
-  );
-}
-
-/**
- * The synthetic operator used while previewing.
- *
- * Given an obviously fake id and address so it can never be mistaken for a real
- * account in a screenshot, a log line, or an audit trail.
- */
-const PREVIEW_PROFILE: ProfileRow = {
-  id: "00000000-0000-0000-0000-000000000000",
-  email: "preview@zylo.local",
-  first_name: "Preview",
-  last_name: "Operator",
-  phone: null,
-  role: "admin",
-  marketing_opt_in: false,
-  created_at: new Date(0).toISOString(),
-};
-
 export interface AdminIdentity {
   profile: ProfileRow;
-  /** True when this session came from the preview bypass, not a real sign-in. */
-  isPreview: boolean;
   /** Whether this identity may perform destructive operations. */
   canElevate: boolean;
+  /** Every module, regardless of `permissions`. Superadmin only. */
+  unrestricted: boolean;
+  /** Module segments this identity may reach. Empty for a superadmin — see `can`. */
+  permissions: string[];
+  /** Whether this identity reaches a module. Use this rather than the array. */
+  can: (segment: ModuleSegment) => boolean;
 }
 
 /**
@@ -91,24 +62,23 @@ export interface AdminIdentity {
  * is not.
  */
 export async function getAdminIdentity(): Promise<AdminIdentity | null> {
-  if (isPreviewMode()) {
-    return {
-      profile: PREVIEW_PROFILE,
-      isPreview: true,
-      // Destructive operations stay available in preview so the flows can be
-      // exercised, but every caller can see which identity performed them.
-      canElevate: true,
-    };
-  }
-
   const profile = await getCurrentProfile();
   if (!profile) return null;
   if (!PORTAL_ROLES.includes(profile.role)) return null;
 
+  // Older rows predate the column; treat a missing array as no modules rather
+  // than as all of them. Failing closed is the only safe direction here.
+  const permissions = Array.isArray(profile.permissions)
+    ? profile.permissions
+    : [];
+
   return {
     profile,
-    isPreview: false,
     canElevate: ELEVATED_ROLES.includes(profile.role),
+    unrestricted: isUnrestricted(profile.role),
+    permissions,
+    can: (segment: ModuleSegment) =>
+      canAccessModule(profile.role, permissions, segment),
   };
 }
 
@@ -116,9 +86,23 @@ export async function getAdminIdentity(): Promise<AdminIdentity | null> {
  * Page-level guard. Redirects rather than throwing, so an operator whose
  * session lapsed lands on the sign-in form instead of an error boundary.
  */
-export async function requireAdmin(): Promise<AdminIdentity> {
+export async function requireAdmin(
+  /**
+   * The module this page belongs to. Omitted on the overview and on screens
+   * that belong to no module, like the operator's own profile.
+   */
+  segment?: ModuleSegment
+): Promise<AdminIdentity> {
   const identity = await getAdminIdentity();
   if (!identity) redirect("/admin/login");
+
+  // A redirect rather than a 403: somebody who reaches a module they do not
+  // hold has usually followed a stale link or a bookmark, and the useful
+  // response is to put them somewhere they can work.
+  if (segment !== undefined && !identity.can(segment)) {
+    redirect("/admin?denied=" + encodeURIComponent(segment));
+  }
+
   return identity;
 }
 
@@ -131,12 +115,30 @@ export async function requireAdmin(): Promise<AdminIdentity> {
  */
 export async function requireAdminAction(options: {
   elevated?: boolean;
+  /**
+   * The module this action belongs to.
+   *
+   * This is where module permissions are actually enforced. A Server Action on
+   * our own origin is the only write path into the application — the browser
+   * holds no database credential and there is no REST surface — so a check
+   * here has nothing to route around it.
+   */
+  module?: ModuleSegment;
 } = {}): Promise<AdminIdentity> {
   const identity = await getAdminIdentity();
 
   if (!identity) {
     throw new AdminAuthorizationError(
       "You are not signed in as a member of staff."
+    );
+  }
+
+  // Module before elevation: "you cannot reach Products" is the more useful
+  // refusal for somebody who was never granted it, and saying "you need to be
+  // an administrator" first would send them to ask for the wrong thing.
+  if (options.module !== undefined && !identity.can(options.module)) {
+    throw new AdminAuthorizationError(
+      "Your account does not have access to that module."
     );
   }
 

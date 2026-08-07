@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
-import { formatPrice } from "@/lib/utils";
 import { storageUrl } from "@/lib/storage";
 import { requireAdmin, createOperatorClient } from "@/lib/admin/guard";
 import { LOW_STOCK_THRESHOLD, type ProductListRow } from "@/lib/admin/queries";
@@ -17,6 +16,7 @@ import {
   Th,
   Tr,
 } from "@/components/admin/primitives";
+import { Money } from "@/components/admin/admin-currency";
 import { ProductActions } from "@/components/admin/product-actions";
 import {
   ProductImageManager,
@@ -43,7 +43,7 @@ export default async function AdminProductDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireAdmin();
+  await requireAdmin("products");
   const { id } = await params;
 
   const supabase = await createOperatorClient();
@@ -90,7 +90,7 @@ export default async function AdminProductDetailPage({
   return (
     <>
       <PageHeader title={product.name} description={product.tagline}>
-        <RealtimeRefresh channel="inventory" label="stock" />
+        <RealtimeRefresh channel="inventory" />
         <Badge tone={product.is_active ? "positive" : "neutral"}>
           {product.is_active ? "Published" : "Draft"}
         </Badge>
@@ -144,10 +144,10 @@ export default async function AdminProductDetailPage({
                         </Badge>
                       </Td>
                       <Td align="right" className="admin-figure font-semibold">
-                        {formatPrice(variant.price)}
+                        <Money amount={variant.price} />
                         {variant.compare_at_price && (
                           <span className="ml-1.5 font-normal text-admin-faint line-through">
-                            {formatPrice(variant.compare_at_price)}
+                            <Money amount={variant.compare_at_price} />
                           </span>
                         )}
                       </Td>
@@ -181,10 +181,10 @@ export default async function AdminProductDetailPage({
               Price
             </p>
             <p className="admin-figure mt-2 flex items-baseline gap-2 text-[1.5rem] font-semibold">
-              {formatPrice(product.price)}
+              <Money amount={product.price} />
               {product.compare_at_price && (
                 <span className="text-[0.875rem] font-normal text-admin-faint line-through">
-                  {formatPrice(product.compare_at_price)}
+                  <Money amount={product.compare_at_price} />
                 </span>
               )}
             </p>

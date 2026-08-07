@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 
-import { montserrat } from "@/lib/fonts";
-import { requireAdmin, isPreviewMode } from "@/lib/admin/guard";
+import { requireAdmin } from "@/lib/admin/guard";
+import { getStoreSettings } from "@/lib/settings";
+import { AdminCurrencyProvider } from "@/components/admin/admin-currency";
+import { GRANTABLE_MODULES } from "@/lib/admin/permissions";
 import { getNotifications } from "@/lib/admin/queries";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { ADMIN_RAIL_COOKIE } from "@/components/admin/sidebar";
@@ -32,12 +34,20 @@ export default async function AdminLayout({
   // opts out of this layout via its own route segment — see admin/login.
   const identity = await requireAdmin();
 
-  const [notifications, cookieStore] = await Promise.all([
+  const [notifications, settings, cookieStore] = await Promise.all([
     getNotifications(),
+    getStoreSettings(),
     cookies(),
   ]);
 
   const collapsed = cookieStore.get(ADMIN_RAIL_COOKIE)?.value === "1";
+
+  // Plain strings: an `AdminModule` carries a Lucide icon, and a component
+  // cannot be serialised across the boundary. The rail rebuilds the nav from
+  // these. A superadmin holds everything, so it sends every segment.
+  const permitted = identity.unrestricted
+    ? GRANTABLE_MODULES.map((module) => module.segment)
+    : identity.permissions;
 
   const name =
     [identity.profile.first_name, identity.profile.last_name]
@@ -45,38 +55,21 @@ export default async function AdminLayout({
       .join(" ") || identity.profile.email;
 
   return (
-    <div className={`${montserrat.variable} contents`}>
-      {isPreviewMode() && <PreviewBanner />}
-
+    <div className="contents">
+      <AdminCurrencyProvider config={settings.currency}>
       <AdminShell
         operator={{
           name,
           email: identity.profile.email,
           role: identity.profile.role,
-          isPreview: identity.isPreview,
         }}
         notifications={notifications}
+        permitted={permitted}
         defaultCollapsed={collapsed}
       >
         {children}
       </AdminShell>
-    </div>
-  );
-}
-
-/**
- * Deliberately loud and un-dismissable.
- *
- * The portal is currently reachable without signing in. That is a development
- * convenience, and the one failure mode worth designing against is somebody
- * forgetting it is on. It cannot render in a production build — `isPreviewMode`
- * is compiled out — so this banner is also the honest signal that the build you
- * are looking at is not one.
- */
-function PreviewBanner() {
-  return (
-    <div className="sticky top-0 z-[60] flex items-center justify-center gap-2 bg-champagne px-4 py-1.5 text-center font-admin text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-obsidian">
-      Preview mode — authentication bypassed. Development builds only.
+      </AdminCurrencyProvider>
     </div>
   );
 }

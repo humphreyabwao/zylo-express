@@ -25,6 +25,7 @@ import {
   PRODUCTS,
 } from "@/data/catalog";
 import { PROMOTIONS } from "@/data/commerce";
+import { HELP_PAGES, LEGAL_PAGES } from "@/data/content";
 import type { Database } from "@/lib/supabase/types";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -157,6 +158,44 @@ async function seedArticles() {
 
   const { error } = await supabase
     .from("articles")
+    .upsert(rows, { onConflict: "slug" });
+  if (error) throw error;
+  ok(rows.length);
+}
+
+/**
+ * Help and legal copy.
+ *
+ * These pages lived only in `src/data/content.ts` and were rendered straight
+ * from the bundle; `content_pages` existed in the schema and had never held a
+ * row. Seeding them is what lets the Pages module edit the copy the storefront
+ * actually serves — `src/lib/content.ts` reads the table and falls back to the
+ * same constants, so this is a promotion of the fallback into real data rather
+ * than a second source of truth.
+ */
+async function seedContentPages() {
+  step("content pages");
+
+  const rows = [
+    ...HELP_PAGES.map((page, index) => ({ page, section: "help", index })),
+    ...LEGAL_PAGES.map((page, index) => ({ page, section: "legal", index })),
+  ].map(({ page, section, index }) => ({
+    slug: page.slug,
+    section,
+    title: page.title,
+    eyebrow: page.eyebrow,
+    subtitle: page.summary,
+    // `sections` is already the stored shape; `facts` is optional on both
+    // sides, so it round-trips without a transform.
+    body: page.sections,
+    seo_title: null,
+    seo_description: page.summary,
+    position: index,
+    is_published: true,
+  }));
+
+  const { error } = await supabase
+    .from("content_pages")
     .upsert(rows, { onConflict: "slug" });
   if (error) throw error;
   ok(rows.length);
@@ -434,6 +473,7 @@ async function main() {
   await seedCategories();
   await seedCollections();
   await seedArticles();
+  await seedContentPages();
   await seedPromotions();
   await seedProducts();
 
@@ -456,7 +496,16 @@ async function main() {
             text: "Complimentary insured delivery on orders over $500",
             href: "/help/shipping",
           },
-          description: "Announcement bar content.",
+          description: "Legacy single-message form. Superseded by `announcements`.",
+        },
+        {
+          // What the bar actually reads — it rotates, so it needs a list.
+          key: "announcements",
+          value: [
+            "Complimentary insured delivery on orders over $500",
+            "Private appointments in Paris, London, New York and Tokyo",
+          ],
+          description: "Rotating messages in the bar above the header.",
         },
       ],
       { onConflict: "key" }

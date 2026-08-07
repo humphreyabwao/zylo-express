@@ -227,6 +227,15 @@ export const TTL = {
   inventory: 30,
   /** Editorial content. */
   content: 60 * 60 * 6,
+  /**
+   * Store settings — display currency, exchange rates, shipping threshold.
+   *
+   * Short on purpose. Writes invalidate the tag, so this ceiling only matters
+   * when a rate is changed directly in the database or when the tag drop
+   * fails; either way an hour of stale exchange rates is a shop quoting the
+   * wrong price, which is a worse failure than a cache miss.
+   */
+  settings: 60,
 } as const;
 
 const PREFIX = "zylo:v1:";
@@ -302,6 +311,9 @@ export const CacheTags = {
   countries: "countries",
   facets: "facets",
   articles: "articles",
+  article: (slug: string) => `article:${slug}`,
+  pages: "pages",
+  page: (slug: string) => `page:${slug}`,
   settings: "settings",
 } as const;
 

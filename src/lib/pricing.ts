@@ -129,14 +129,27 @@ export function computeTotals({
   };
 }
 
-/** Amount still needed to unlock complimentary standard delivery. */
-export function amountToFreeShipping(subtotal: number): number {
-  return Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal);
+/**
+ * Amount still needed to unlock complimentary standard delivery.
+ *
+ * `threshold` defaults to the bundled constant so every existing caller keeps
+ * working, but the cart passes the live value from `site_settings`. The
+ * authoritative version of this comparison is in `src/lib/orders.ts`, which
+ * always reads settings — this one only drives the meter.
+ */
+export function amountToFreeShipping(
+  subtotal: number,
+  threshold: number = FREE_SHIPPING_THRESHOLD
+): number {
+  return Math.max(0, threshold - subtotal);
 }
 
-export function freeShippingProgress(subtotal: number): number {
-  if (FREE_SHIPPING_THRESHOLD <= 0) return 1;
-  return Math.min(1, subtotal / FREE_SHIPPING_THRESHOLD);
+export function freeShippingProgress(
+  subtotal: number,
+  threshold: number = FREE_SHIPPING_THRESHOLD
+): number {
+  if (threshold <= 0) return 1;
+  return Math.min(1, subtotal / threshold);
 }
 
 // The checkout's shipping picker needs the list alongside these helpers, so it
