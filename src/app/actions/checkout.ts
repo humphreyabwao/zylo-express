@@ -87,7 +87,7 @@ export async function startCheckout(
 
   const values = parsed.data;
 
-  if (!availablePaymentMethods().includes(values.paymentMethod)) {
+  if (!(await availablePaymentMethods()).includes(values.paymentMethod)) {
     return {
       kind: "error",
       message: "That payment method is not available right now.",

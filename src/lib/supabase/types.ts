@@ -348,6 +348,26 @@ export type AppointmentRow = {
 
 export type SalePaymentMethodDb = "cash" | "card" | "mpesa" | "other";
 
+/**
+ * Payment provider keys.
+ *
+ * Only ever fetched with the service-role client — the table has RLS on and no
+ * policies, so nothing else can read it. A value from here must not be put in
+ * a payload bound for a Client Component.
+ */
+export type PaymentCredentialRow = {
+  provider: "paystack" | "paypal";
+  mode: "test" | "live";
+  test_secret_key: string | null;
+  test_public_key: string | null;
+  live_secret_key: string | null;
+  live_public_key: string | null;
+  settlement_currency: string;
+  enabled: boolean;
+  updated_at: string;
+  updated_by: string | null;
+};
+
 export type SaleRow = {
   id: string;
   /** ZY-POS-000000, assigned by trigger. */
@@ -490,6 +510,7 @@ export type Database = {
       // while /help and /legal served hard-coded copy from src/data/content.ts.
       content_pages: Table<ContentPageRow>;
       site_settings: Table<SiteSettingRow>;
+      payment_credentials: Table<PaymentCredentialRow>;
       // Was declared with four of its six columns, so `unsubscribed_at` and
       // `created_at` were invisible to every query — which is most of why the
       // subscriber list could not have been built against it.
