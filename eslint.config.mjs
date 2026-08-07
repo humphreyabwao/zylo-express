@@ -12,8 +12,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Scratch build dir used by `npm run verify`.
+    // Scratch build dirs: `npm run verify` and `npm run preview` each build
+    // into their own so they never clobber a running server's assets. Both
+    // hold compiled output, which lints as hundreds of errors about `require`
+    // and reassigning `module` if it is not excluded here — .gitignore does
+    // not cover this, ESLint keeps its own ignore list.
     ".next-verify/**",
+    ".next-preview/**",
     // Edge Functions run on Deno, not on Next's Node/browser runtimes: they
     // use `Deno.*` globals and URL imports, and carry their own
     // `deno-lint-ignore` directives which ESLint does not understand. They are
