@@ -2,7 +2,8 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 
-import { env, isPaypalConfigured, isPaystackConfigured } from "@/lib/env";
+import { env } from "@/lib/env";
+import { getCredentials, isProviderLive } from "@/lib/payments/credentials";
 import { countPromotionRedemption } from "@/lib/orders";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type {
@@ -57,11 +58,23 @@ export class PaymentError extends Error {
   }
 }
 
-/** Which methods are actually offerable, given what is configured. */
-export function availablePaymentMethods(): PaymentMethod[] {
+/**
+ * Which methods are actually offerable.
+ *
+ * A provider counts when it has a usable key — from Settings or, failing that,
+ * the environment — *and* has not been switched off by an operator. Async
+ * because the keys now live in a table; checkout is `force-dynamic`, so this
+ * is one query on a page that was never cacheable to begin with.
+ */
+export async function availablePaymentMethods(): Promise<PaymentMethod[]> {
+  const [paystack, paypal] = await Promise.all([
+    isProviderLive("paystack"),
+    isProviderLive("paypal"),
+  ]);
+
   const methods: PaymentMethod[] = [];
-  if (isPaystackConfigured()) methods.push("card", "mpesa");
-  if (isPaypalConfigured()) methods.push("paypal");
+  if (paystack) methods.push("card", "mpesa");
+  if (paypal) methods.push("paypal");
   return methods;
 }
 
@@ -105,16 +118,22 @@ export async function startPayment(
 ): Promise<StartPaymentResult> {
   const provider = PROVIDER_FOR[input.method];
 
-  if (provider === "paystack" && !isPaystackConfigured()) {
-    throw new PaymentError("This payment method is unavailable right now.");
-  }
-  if (provider === "paypal" && !isPaypalConfigured()) {
-    throw new PaymentError("PayPal is unavailable right now.");
+  const credentials = await getCredentials(provider);
+
+  if (!credentials?.enabled) {
+    throw new PaymentError(
+      provider === "paypal"
+        ? "PayPal is unavailable right now."
+        : "This payment method is unavailable right now."
+    );
   }
 
   // PayPal is billed in the store's own currency; Paystack in whatever its
-  // account settles, which for an M-Pesa-capable account is KES.
-  const target = provider === "paypal" ? "USD" : env.paystackCurrency;
+  // account settles, which for an M-Pesa-capable account is KES. Taken from
+  // the resolved credentials so the settlement currency travels with the key
+  // it belongs to — a test account registered for a different currency than
+  // the live one would otherwise charge in the wrong one after a mode switch.
+  const target = provider === "paypal" ? "USD" : credentials.settlementCurrency;
   const charge = convertForCharge(input.amount, "USD", target);
 
   const reference = newReference();

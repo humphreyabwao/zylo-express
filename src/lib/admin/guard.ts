@@ -124,6 +124,17 @@ export async function requireAdminAction(options: {
    * here has nothing to route around it.
    */
   module?: ModuleSegment;
+  /**
+   * Restrict to superadmin, above and beyond the module grant.
+   *
+   * For the few actions where holding the module is not enough on its own —
+   * payment provider keys being the case that prompted this. An administrator
+   * with Settings can already change what customers are charged; being able to
+   * change *which account receives it* is a different kind of authority, and
+   * one that a shop with several administrators should not hand out by
+   * default.
+   */
+  superadmin?: boolean;
 } = {}): Promise<AdminIdentity> {
   const identity = await getAdminIdentity();
 
@@ -139,6 +150,12 @@ export async function requireAdminAction(options: {
   if (options.module !== undefined && !identity.can(options.module)) {
     throw new AdminAuthorizationError(
       "Your account does not have access to that module."
+    );
+  }
+
+  if (options.superadmin && !identity.unrestricted) {
+    throw new AdminAuthorizationError(
+      "This action requires a super administrator account."
     );
   }
 
