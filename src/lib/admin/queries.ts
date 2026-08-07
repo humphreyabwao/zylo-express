@@ -15,6 +15,7 @@ import type {
   SaleItemRow,
   SalePaymentMethodDb,
   SaleRow,
+  SaleStatusDb,
   InventorySummaryRpcResult,
   OrderRow,
   OrderStatusDb,
@@ -1801,7 +1802,53 @@ export interface SaleFilters {
   search?: string;
   method?: "all" | SalePaymentMethodDb;
   /** Calendar day boundaries are the operator's, not UTC's. */
-  range?: "all" | "today" | "week";
+  range?: SaleRange;
+  status?: "all" | SaleStatusDb;
+}
+
+/**
+ * Periods the sales list offers.
+ *
+ * `today` is the default rather than `all`, because the question a counter
+ * asks this screen twenty times a day is "what have we taken today" — and an
+ * all-time list answers it only after a filter change.
+ */
+export type SaleRange =
+  | "all"
+  | "today"
+  | "yesterday"
+  | "week"
+  | "month";
+
+/** Half-open [start, end) in ISO. `end` is null for ranges with no upper bound. */
+export function saleRangeBounds(range: SaleRange | undefined): {
+  start: string | null;
+  end: string | null;
+} {
+  const now = new Date();
+  const midnight = (offsetDays = 0) =>
+    new Date(now.getFullYear(), now.getMonth(), now.getDate() + offsetDays);
+
+  switch (range) {
+    case "today":
+      return { start: midnight().toISOString(), end: null };
+    case "yesterday":
+      // Bounded at both ends — the only range that is, since "yesterday"
+      // excludes today rather than running up to now.
+      return {
+        start: midnight(-1).toISOString(),
+        end: midnight().toISOString(),
+      };
+    case "week":
+      return { start: midnight(-6).toISOString(), end: null };
+    case "month":
+      return {
+        start: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+        end: null,
+      };
+    default:
+      return { start: null, end: null };
+  }
 }
 
 export interface SalesSummary {
@@ -1834,11 +1881,13 @@ export async function listSales(
     query = query.eq("payment_method", filters.method);
   }
 
-  if (filters.range === "today") {
-    query = query.gte("created_at", startOfToday());
-  } else if (filters.range === "week") {
-    query = query.gte("created_at", startOfWeek());
+  if (filters.status && filters.status !== "all") {
+    query = query.eq("status", filters.status);
   }
+
+  const bounds = saleRangeBounds(filters.range);
+  if (bounds.start) query = query.gte("created_at", bounds.start);
+  if (bounds.end) query = query.lt("created_at", bounds.end);
 
   const { data, count, error } = await query
     .order("created_at", { ascending: false })
@@ -1857,6 +1906,104 @@ export async function listSales(
   });
 
   return toPage(rows, count, page, pageSize);
+}
+
+/* ------------------------------------------------------- one sale, in full */
+
+export type { SaleItemRow };
+
+export interface SaleDetail extends SaleRow {
+  items: SaleItemRow[];
+}
+
+/** A single sale with its lines — what the view drawer and the receipt read. */
+export async function getSaleDetail(id: string): Promise<SaleDetail | null> {
+  const supabase = await createOperatorClient();
+
+  const { data, error } = await supabase
+    .from("sales")
+    .select("*, sale_items(*)")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    logQueryFailure("sale detail", error);
+    return null;
+  }
+  if (!data) return null;
+
+  const { sale_items, ...sale } = data as unknown as SaleRow & {
+    sale_items: SaleItemRow[] | null;
+  };
+
+  return { ...sale, items: sale_items ?? [] };
+}
+
+/* ----------------------------------------------------------------- export */
+
+/**
+ * Every sale matching the filters, lines included, with no pagination.
+ *
+ * Separate from `listSales` because an export must not silently stop at the
+ * end of page one — the whole point is that the file matches what the operator
+ * filtered to. Capped so a year of trading cannot exhaust the request's memory
+ * on a serverless instance; the cap is reported so the UI can say the file was
+ * truncated rather than let somebody file a short VAT return.
+ */
+export const SALES_EXPORT_LIMIT = 5000;
+
+export interface SalesExport {
+  rows: (SaleRow & { items: SaleItemRow[] })[];
+  truncated: boolean;
+}
+
+export async function listSalesForExport(
+  filters: SaleFilters = {}
+): Promise<SalesExport> {
+  const supabase = await createOperatorClient();
+
+  let query = supabase.from("sales").select("*, sale_items(*)");
+
+  if (filters.search?.trim()) {
+    const term = filters.search.trim().replace(/[(),*]/g, " ");
+    query = query.or(
+      `reference.ilike.%${term}%,customer_name.ilike.%${term}%,operator_name.ilike.%${term}%`
+    );
+  }
+  if (filters.method && filters.method !== "all") {
+    query = query.eq("payment_method", filters.method);
+  }
+  if (filters.status && filters.status !== "all") {
+    query = query.eq("status", filters.status);
+  }
+
+  const bounds = saleRangeBounds(filters.range);
+  if (bounds.start) query = query.gte("created_at", bounds.start);
+  if (bounds.end) query = query.lt("created_at", bounds.end);
+
+  // One over the cap, so "there was more" is knowable rather than guessed.
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .limit(SALES_EXPORT_LIMIT + 1);
+
+  if (error) {
+    logQueryFailure("sales export", error);
+    return { rows: [], truncated: false };
+  }
+
+  const joined = (data ?? []) as unknown as (SaleRow & {
+    sale_items: SaleItemRow[] | null;
+  })[];
+
+  const truncated = joined.length > SALES_EXPORT_LIMIT;
+
+  return {
+    rows: joined.slice(0, SALES_EXPORT_LIMIT).map(({ sale_items, ...sale }) => ({
+      ...sale,
+      items: sale_items ?? [],
+    })),
+    truncated,
+  };
 }
 
 /** Local midnight, as an ISO instant. */

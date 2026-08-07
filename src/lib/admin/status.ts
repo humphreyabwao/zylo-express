@@ -75,3 +75,22 @@ export const SALE_METHOD_CLASS: Record<string, string> = {
   mpesa: "border-champagne/40 bg-champagne/15 text-champagne-dark",
   other: "border-wine/30 bg-wine/10 text-wine",
 };
+
+export const SALE_STATUS_LABEL: Record<string, string> = {
+  pending: "Pending",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
+/**
+ * Cancelled is the only one that shouts.
+ *
+ * Completed is the overwhelming majority of rows, so it is deliberately quiet
+ * — a wall of green ticks is noise, and what an operator scans this column for
+ * is the exception.
+ */
+export const SALE_STATUS_CLASS: Record<string, string> = {
+  pending: "border-champagne-dark/40 bg-champagne/10 text-champagne-dark",
+  completed: "border-admin-line text-admin-muted",
+  cancelled: "border-destructive/30 bg-destructive/10 text-destructive",
+};

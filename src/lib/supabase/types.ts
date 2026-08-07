@@ -349,6 +349,14 @@ export type AppointmentRow = {
 export type SalePaymentMethodDb = "cash" | "card" | "mpesa" | "other";
 
 /**
+ * A till sale's state.
+ *
+ * `completed` is the default: money changed hands at the counter, and holding
+ * takings back until somebody clicks a button would make the dashboard wrong.
+ */
+export type SaleStatusDb = "pending" | "completed" | "cancelled";
+
+/**
  * Payment provider keys.
  *
  * Only ever fetched with the service-role client — the table has RLS on and no
@@ -382,6 +390,14 @@ export type SaleRow = {
   total: number;
   currency: CurrencyDb;
   payment_method: SalePaymentMethodDb;
+  /**
+   * Moved only by `approve_sale` / `cancel_sale`, never by a plain update —
+   * cancelling has to return the stock and the RPCs are what guarantee it.
+   */
+  status: SaleStatusDb;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancel_reason: string;
   /** Cash tendered, for change. Null for every other method. */
   tendered: number | null;
   note: string;
@@ -536,6 +552,19 @@ export type Database = {
        * Writes a counter sale and decrements its stock in one transaction.
        * SECURITY INVOKER, so RLS is what authorises it. See migration 15.
        */
+      /**
+       * Both move stock as well as status — cancelling returns every line to
+       * inventory, reinstating takes it off again — which is why there is no
+       * plain update path for `sales.status`.
+       */
+      approve_sale: {
+        Args: { p_sale_id: string };
+        Returns: SaleRow;
+      };
+      cancel_sale: {
+        Args: { p_sale_id: string; p_reason: string };
+        Returns: SaleRow;
+      };
       record_sale: {
         Args: {
           p_operator_name: string;

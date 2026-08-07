@@ -23,7 +23,14 @@ import { Money } from "@/components/admin/admin-currency";
 import { ListToolbar } from "@/components/admin/toolbar";
 import { Pagination } from "@/components/admin/pagination";
 import { RealtimeRefresh } from "@/components/admin/realtime-refresh";
-import { SALE_METHOD_CLASS, SALE_METHOD_LABEL } from "@/lib/admin/status";
+import { SaleActions } from "@/components/admin/sale-actions";
+import { SalesExportMenu } from "@/components/admin/sales-export";
+import {
+  SALE_METHOD_CLASS,
+  SALE_METHOD_LABEL,
+  SALE_STATUS_CLASS,
+  SALE_STATUS_LABEL,
+} from "@/lib/admin/status";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "Sales" };
@@ -40,7 +47,7 @@ export default async function AdminSalesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin("sales");
+  const identity = await requireAdmin("sales");
 
   const params = await searchParams;
   const read = (key: string) => {
@@ -48,11 +55,17 @@ export default async function AdminSalesPage({
     return Array.isArray(value) ? value[0] : value;
   };
 
+  // Today by default. The question a counter asks this screen twenty times a
+  // day is "what have we taken today", and an all-time list answers it only
+  // after a filter change. `range=all` is still reachable from the picker.
+  const range = (read("range") ?? "today") as SaleFilters["range"];
+
   const filters: SaleFilters = {
     page: normalisePage(read("page")),
     search: read("q"),
     method: (read("method") ?? "all") as SaleFilters["method"],
-    range: (read("range") ?? "all") as SaleFilters["range"],
+    range,
+    status: (read("status") ?? "all") as SaleFilters["status"],
   };
 
   const [page, summary] = await Promise.all([
@@ -61,13 +74,28 @@ export default async function AdminSalesPage({
   ]);
 
   const filtered = Boolean(
-    filters.search || filters.method !== "all" || filters.range !== "all"
+    filters.search ||
+      filters.method !== "all" ||
+      filters.status !== "all" ||
+      range !== "today"
   );
+
+  // Carried onto the export links so the file matches what is on screen.
+  const exportQuery = new URLSearchParams();
+  if (filters.search) exportQuery.set("q", filters.search);
+  if (read("method")) exportQuery.set("method", read("method")!);
+  if (read("status")) exportQuery.set("status", read("status")!);
+  exportQuery.set("range", range ?? "today");
 
   return (
     <>
       <PageHeader title="Sales">
+        {/* Cancelling a sale on another till has to show up here without a
+            reload — that is the whole point of a status column. */}
         <RealtimeRefresh channel="sales" />
+
+        <SalesExportMenu query={exportQuery.toString()} />
+
         <Link
           href="/admin/pos"
           className="inline-flex h-9 items-center rounded-md bg-admin-fg px-4 text-[0.8125rem] font-semibold text-admin-panel transition-opacity hover:opacity-85"
@@ -116,10 +144,24 @@ export default async function AdminSalesPage({
             {
               name: "range",
               label: "Period",
+              // No empty option: blank means "today" here rather than "all",
+              // so all-time has to be an explicit value to be selectable.
               options: [
-                { value: "", label: "All time" },
                 { value: "today", label: "Today" },
+                { value: "yesterday", label: "Yesterday" },
                 { value: "week", label: "Last 7 days" },
+                { value: "month", label: "This month" },
+                { value: "all", label: "All time" },
+              ],
+            },
+            {
+              name: "status",
+              label: "Status",
+              options: [
+                { value: "", label: "All statuses" },
+                { value: "completed", label: "Completed" },
+                { value: "pending", label: "Pending" },
+                { value: "cancelled", label: "Cancelled" },
               ],
             },
             {
@@ -150,12 +192,16 @@ export default async function AdminSalesPage({
             <thead>
               <tr>
                 <Th>Reference</Th>
+                <Th>Status</Th>
                 <Th>Operator</Th>
                 <Th>Customer</Th>
                 <Th>Payment</Th>
                 <Th align="right">Items</Th>
                 <Th align="right">Total</Th>
                 <Th align="right">Time</Th>
+                <Th align="right">
+                  <span className="sr-only">Actions</span>
+                </Th>
               </tr>
             </thead>
 
@@ -163,6 +209,18 @@ export default async function AdminSalesPage({
               {page.rows.map((sale) => (
                 <Tr key={sale.id}>
                   <Td className="admin-figure font-medium">{sale.reference}</Td>
+
+                  <Td>
+                    <span
+                      className={cn(
+                        "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-[0.6875rem] font-semibold",
+                        SALE_STATUS_CLASS[sale.status] ??
+                          "border-admin-line text-admin-muted"
+                      )}
+                    >
+                      {SALE_STATUS_LABEL[sale.status] ?? sale.status}
+                    </span>
+                  </Td>
 
                   <Td className="text-admin-muted">{sale.operator_name || "—"}</Td>
 
@@ -188,7 +246,17 @@ export default async function AdminSalesPage({
                     {sale.item_count}
                   </Td>
 
-                  <Td align="right" className="admin-figure font-medium">
+                  <Td
+                    align="right"
+                    className={cn(
+                      "admin-figure font-medium",
+                      // A cancelled sale is not takings. Struck through so a
+                      // column of figures cannot be read as a running total
+                      // that includes it.
+                      sale.status === "cancelled" &&
+                        "text-admin-faint line-through"
+                    )}
+                  >
                     <Money amount={sale.total} />
                     {sale.discount > 0 && (
                       <span className="ml-1.5 text-[0.75rem] font-normal text-champagne-dark">
@@ -199,6 +267,10 @@ export default async function AdminSalesPage({
 
                   <Td align="right" className="admin-figure text-admin-faint">
                     {TIME.format(new Date(sale.created_at))}
+                  </Td>
+
+                  <Td align="right">
+                    <SaleActions sale={sale} canElevate={identity.canElevate} />
                   </Td>
                 </Tr>
               ))}
