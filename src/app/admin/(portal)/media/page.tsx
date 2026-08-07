@@ -13,7 +13,7 @@ export default async function AdminMediaPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
+  await requireAdmin("media");
 
   const params = await searchParams;
   const read = (key: string) => {
@@ -50,7 +50,7 @@ export default async function AdminMediaPage({
             : `${assets.length} files · ${attached} in use · ${orphans} unused`
         }
       >
-        <RealtimeRefresh channel="media" label="media" />
+        <RealtimeRefresh channel="media" />
       </PageHeader>
 
       <Panel>

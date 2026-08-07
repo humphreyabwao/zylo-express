@@ -60,7 +60,26 @@
 
   /* --- Spacing & layout ------------------------------------------------- */
   --spacing-gutter: 1.5rem;
-  --spacing-section: clamp(5rem, 12vh, 10rem);
+
+  /**
+   * Vertical rhythm between sections.
+   *
+   * Applied as `py-section`, so each section owns padding on both edges and
+   * two stacked sections produce *twice* this value. The token is therefore
+   * half the intended gap, not the whole of it — the previous
+   * `clamp(5rem, 12vh, 10rem)` meant up to 320px of dead space between, say,
+   * Selected and Curation on the homepage.
+   *
+   * Sized against viewport *width*, not height. `vh` tied section rhythm to
+   * how tall a phone is, so the same page breathed differently on a tall
+   * handset and a short one in landscape, which is not what the measure is
+   * about.
+   */
+  --spacing-section: clamp(2.5rem, 5.5vw, 4.5rem);
+
+  /** Gap between a section heading and the content under it. */
+  --spacing-section-gap: clamp(1.75rem, 3.5vw, 3.5rem);
+
   --container-shell: 96rem;
 
   /* --- Radius: luxury is sharp ----------------------------------------- */
@@ -221,15 +240,40 @@
    * it. Champagne stays as the single accent, which is what keeps the two
    * halves recognisably one product.
    */
-  --admin-canvas: #f4f3f1;
+  /**
+   * The rail is obsidian in both themes, on purpose.
+   *
+   * It is the one fixed element on every screen, so it should be the one thing
+   * that never moves — a rail that inverts with the theme is a second surface
+   * competing for attention every time the lights change. Defined here and
+   * deliberately absent from `.dark` below.
+   */
+  --admin-rail: var(--color-obsidian);
+  --admin-rail-fg: var(--color-ivory);
+  /**
+   * Contrast on obsidian, measured rather than eyeballed.
+   *
+   * 45% ivory landed near 3.4:1 against the rail, under the 4.5:1 body-text
+   * floor — and the group labels then multiplied it by another 0.7, which put
+   * them around 2:1 and effectively invisible. 68% reads at roughly 7:1, and
+   * the label tier at 52% clears 4.5:1 on its own without a modifier.
+   */
+  --admin-rail-muted: color-mix(in oklab, var(--color-ivory) 68%, transparent);
+  --admin-rail-label: color-mix(in oklab, var(--color-ivory) 52%, transparent);
+  --admin-rail-line: color-mix(in oklab, var(--color-ivory) 14%, transparent);
+  --admin-rail-hover: color-mix(in oklab, var(--color-ivory) 8%, transparent);
+
+  --admin-canvas: #faf9f7;
+  /* Within a hair of the canvas. A panel is defined by the rule around it, not
+     by floating on a different shade — which is what made every screen read as
+     a field of rectangles. */
   --admin-panel: #ffffff;
-  --admin-rail: #ffffff;
   --admin-fg: var(--color-obsidian);
   --admin-muted: var(--color-slate);
   --admin-faint: var(--color-smoke);
-  --admin-line: color-mix(in oklab, var(--color-obsidian) 11%, transparent);
-  --admin-hover: color-mix(in oklab, var(--color-obsidian) 5%, transparent);
-  --admin-active: color-mix(in oklab, var(--color-champagne) 16%, transparent);
+  --admin-line: color-mix(in oklab, var(--color-obsidian) 9%, transparent);
+  --admin-hover: color-mix(in oklab, var(--color-obsidian) 4%, transparent);
+  --admin-active: color-mix(in oklab, var(--color-obsidian) 6%, transparent);
 }
 
 .dark {
@@ -273,15 +317,14 @@
 
   /* Admin, dark. The rail sits *below* the canvas in lightness rather than
      above it, so the eye settles on the data and the navigation recedes. */
-  --admin-canvas: #101013;
-  --admin-panel: #17171b;
-  --admin-rail: #0c0c0f;
+  --admin-canvas: #0e0e11;
+  --admin-panel: #141418;
   --admin-fg: var(--color-ivory);
   --admin-muted: var(--color-mist);
   --admin-faint: var(--color-smoke);
-  --admin-line: color-mix(in oklab, var(--color-ivory) 12%, transparent);
-  --admin-hover: color-mix(in oklab, var(--color-ivory) 7%, transparent);
-  --admin-active: color-mix(in oklab, var(--color-champagne) 20%, transparent);
+  --admin-line: color-mix(in oklab, var(--color-ivory) 10%, transparent);
+  --admin-hover: color-mix(in oklab, var(--color-ivory) 5%, transparent);
+  --admin-active: color-mix(in oklab, var(--color-ivory) 8%, transparent);
 }
 
 @theme inline {
@@ -315,6 +358,11 @@
   --color-admin-canvas: var(--admin-canvas);
   --color-admin-panel: var(--admin-panel);
   --color-admin-rail: var(--admin-rail);
+  --color-admin-rail-fg: var(--admin-rail-fg);
+  --color-admin-rail-muted: var(--admin-rail-muted);
+  --color-admin-rail-label: var(--admin-rail-label);
+  --color-admin-rail-line: var(--admin-rail-line);
+  --color-admin-rail-hover: var(--admin-rail-hover);
   --color-admin-fg: var(--admin-fg);
   --color-admin-muted: var(--admin-muted);
   --color-admin-faint: var(--admin-faint);
@@ -322,8 +370,15 @@
   --color-admin-hover: var(--admin-hover);
   --color-admin-active: var(--admin-active);
 
-  --font-admin: var(--font-montserrat), "Montserrat", ui-sans-serif, system-ui,
-    sans-serif;
+  /**
+   * The admin shares the storefront's interface face.
+   *
+   * It ran on Montserrat, a third family whose only justification was that a
+   * dashboard is not a shop. Jost is already loaded, is geometric enough to
+   * hold a dense table, and means the portal and the storefront read as one
+   * product rather than two.
+   */
+  --font-admin: var(--font-jost), "Jost", ui-sans-serif, system-ui, sans-serif;
 }
 
 /* ============================================================================
@@ -341,6 +396,20 @@
     -webkit-text-size-adjust: 100%;
     scroll-behavior: smooth;
     scroll-padding-top: 6rem;
+
+    /**
+     * Nothing may scroll the page sideways.
+     *
+     * `clip`, not `hidden`. `overflow-x: hidden` makes this element a scroll
+     * container, which silently kills `position: sticky` on every descendant —
+     * and the product page's purchase panel is sticky. `clip` cuts the
+     * overflow without creating one.
+     *
+     * This is a floor, not a licence: a child wide enough to need it is still
+     * a bug. It exists so one is a clipped edge on a phone rather than a whole
+     * page that slides.
+     */
+    overflow-x: clip;
   }
 
   body {
@@ -635,4 +704,51 @@
 @utility admin-figure {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
+}
+
+/* ============================================================================
+   Receipt printing
+   ---------------------------------------------------------------------------
+   A till prints to a thermal roll through the ordinary browser print dialog,
+   so the receipt is real DOM rather than a generated PDF: no extra dependency,
+   and the operator's existing printer setup already works.
+
+   Everything except the receipt is removed from the page rather than hidden
+   with `visibility`, so nothing reserves space and the roll does not feed
+   blank paper before the first line.
+   ========================================================================== */
+
+@media print {
+  body * {
+    display: none !important;
+  }
+
+  [data-receipt],
+  [data-receipt] * {
+    display: revert !important;
+  }
+
+  [data-receipt] {
+    position: absolute !important;
+    inset: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 12px !important;
+  }
+
+  [data-receipt-hide] {
+    display: none !important;
+  }
+
+  @page {
+    /* 80mm roll with the usual 4mm of unprintable edge each side. */
+    size: 72mm auto;
+    margin: 0;
+  }
 }

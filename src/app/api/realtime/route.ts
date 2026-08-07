@@ -62,6 +62,37 @@ const CHANNELS = {
       price: row.price,
     }),
   },
+  orders: {
+    table: "orders",
+    /**
+     * Reference and status only.
+     *
+     * An order row carries a shipping address and a total. Migration 8 put the
+     * table in the publication so the dashboard could react to new checkouts,
+     * and the projection is what keeps that from meaning "broadcast every
+     * order to every open browser". The admin re-reads through the RLS-bound
+     * path.
+     */
+    project: (row: Record<string, unknown>) => ({
+      orderId: row.id,
+      reference: row.reference,
+      status: row.status,
+    }),
+  },
+  sales: {
+    table: "sales",
+    /**
+     * Reference and total only — no customer name or email.
+     *
+     * The till and the sales list both watch this so a second terminal, or the
+     * office, sees a sale the moment it is rung up.
+     */
+    project: (row: Record<string, unknown>) => ({
+      saleId: row.id,
+      reference: row.reference,
+      total: row.total,
+    }),
+  },
   categories: {
     table: "categories",
     project: (row: Record<string, unknown>) => ({
@@ -184,6 +215,10 @@ const CHANNELS = {
  */
 const CHANNEL_TAGS: Record<ChannelName, string[]> = {
   inventory: [CacheTags.products, CacheTags.facets],
+  // Stock is decremented on checkout, so a new order changes the catalogue.
+  orders: [CacheTags.products, CacheTags.facets],
+  // A counter sale decrements stock, so availability everywhere is stale.
+  sales: [CacheTags.products, CacheTags.facets],
   products: [CacheTags.products, CacheTags.facets],
   categories: [CacheTags.categories, CacheTags.products, CacheTags.facets],
   collections: [CacheTags.collections, CacheTags.products],

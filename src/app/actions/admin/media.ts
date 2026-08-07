@@ -65,7 +65,7 @@ const EXTENSION: Record<string, string> = {
 
 async function authorise(): Promise<MediaResult | null> {
   try {
-    await requireAdminAction();
+    await requireAdminAction({ module: "media" });
     return null;
   } catch (error) {
     if (error instanceof AdminAuthorizationError) {

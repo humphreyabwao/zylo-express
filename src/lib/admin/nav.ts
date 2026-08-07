@@ -10,6 +10,8 @@ import {
   Newspaper,
   Package,
   Radio,
+  Receipt as ReceiptIcon,
+  ScanLine,
   Receipt,
   Settings,
   ShieldCheck,
@@ -96,6 +98,23 @@ export const ADMIN_NAV: AdminModuleGroup[] = [
         label: "Media",
         icon: ImageIcon,
         description: "Product photography and editorial plates",
+      },
+    ],
+  },
+  {
+    label: "Retail",
+    modules: [
+      {
+        segment: "pos",
+        label: "Point of sale",
+        icon: ScanLine,
+        description: "Ring up a counter sale",
+      },
+      {
+        segment: "sales",
+        label: "Sales",
+        icon: ReceiptIcon,
+        description: "Counter takings and their history",
       },
     ],
   },
@@ -207,4 +226,29 @@ export function moduleForPath(pathname: string): AdminModule | undefined {
         trimmed === moduleHref(m.segment) ||
         trimmed.startsWith(`${moduleHref(m.segment)}/`)
     );
+}
+
+/**
+ * The nav, filtered to the modules an operator holds.
+ *
+ * Takes segments rather than a predicate so it can be called from a Client
+ * Component — a predicate closing over server state cannot cross the boundary,
+ * and neither can the icons on these modules, which is why the filtering
+ * happens here rather than being passed in pre-built.
+ *
+ * Groups left empty are dropped: a heading over nothing tells an operator
+ * there is something there they cannot see, which is worse than silence.
+ *
+ * Presentation only. Access is decided by the page and action guards.
+ */
+export function buildNav(permitted: readonly string[]): AdminModuleGroup[] {
+  const held = new Set(permitted);
+
+  return ADMIN_NAV.map((group) => ({
+    ...group,
+    // The overview has no segment and belongs to anyone who can sign in.
+    modules: group.modules.filter(
+      (module) => module.segment === "" || held.has(module.segment)
+    ),
+  })).filter((group) => group.modules.length > 0);
 }

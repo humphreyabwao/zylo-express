@@ -59,7 +59,7 @@ async function revalidateCategories() {
 
 async function authorise(): Promise<ActionResult | null> {
   try {
-    await requireAdminAction();
+    await requireAdminAction({ module: "categories" });
     return null;
   } catch (error) {
     if (error instanceof AdminAuthorizationError) {

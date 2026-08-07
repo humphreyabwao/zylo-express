@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { CircleAlert, Layers, TrendingDown, Wallet } from "lucide-react";
 
-import { formatPrice } from "@/lib/utils";
 import { requireAdmin } from "@/lib/admin/guard";
 import {
   LOW_STOCK_THRESHOLD,
@@ -21,6 +20,7 @@ import {
   Th,
   Tr,
 } from "@/components/admin/primitives";
+import { Money } from "@/components/admin/admin-currency";
 import { InventoryActions } from "@/components/admin/inventory-actions";
 import { ListToolbar } from "@/components/admin/toolbar";
 import { Pagination } from "@/components/admin/pagination";
@@ -45,7 +45,7 @@ export default async function AdminInventoryPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
+  await requireAdmin("inventory");
 
   const params = await searchParams;
   const read = (key: string) => {
@@ -77,9 +77,8 @@ export default async function AdminInventoryPage({
     <>
       <PageHeader
         title="Inventory"
-        description="Every purchasable option, and the stock behind it."
       >
-        <RealtimeRefresh channel="inventory" label="stock" />
+        <RealtimeRefresh channel="inventory" />
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -91,7 +90,7 @@ export default async function AdminInventoryPage({
         />
         <StatCard
           label="Retail value"
-          value={formatPrice(summary.retail_value)}
+          value={<Money amount={summary.retail_value} />}
           hint="Stock at asking price, not cost"
           icon={Wallet}
         />
@@ -202,11 +201,11 @@ export default async function AdminInventoryPage({
                     </Td>
 
                     <Td align="right" className="admin-figure font-semibold">
-                      {formatPrice(row.price)}
+                      <Money amount={row.price} />
                     </Td>
 
                     <Td align="right" className="admin-figure text-admin-muted">
-                      {formatPrice(row.price * row.inventory_quantity)}
+                      <Money amount={row.price * row.inventory_quantity} />
                     </Td>
 
                     <Td align="right">

@@ -1,114 +1,110 @@
 "use client";
 
-import * as React from "react";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { Loader2, TriangleAlert } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import {
-  adminSignIn,
-  type AdminAuthState,
-} from "@/app/actions/admin/auth";
+import { adminSignIn, type AdminAuthState } from "@/app/actions/admin/auth";
 
 /**
  * Portal sign-in form.
  *
- * Posts to `adminSignIn`, which authenticates against Supabase, checks the
- * account is staff, and redirects to `/admin` — or refuses with a reason.
+ * Styled in the storefront's language rather than the workspace's — see the
+ * note on the page. Hairline-underlined fields, square edges, the long easing.
  *
  * A plain `<form action>` rather than an onSubmit handler: the action runs
- * server-side and ends in a `redirect`, which React's form integration follows
- * for us. It also means the form works before hydration, which for a sign-in
- * page on a slow connection is worth having.
+ * server-side and ends in a `redirect`, which React's form integration follows.
+ * It also works before hydration, which on a sign-in page is worth having.
  */
 
 const initialState: AdminAuthState = {};
-
-const inputClass = (invalid?: boolean) =>
-  cn(
-    "h-11 w-full rounded-md border bg-admin-panel px-3.5 text-[0.875rem] text-admin-fg",
-    "outline-none transition-colors duration-200 placeholder:text-admin-faint",
-    invalid
-      ? "border-destructive focus:border-destructive"
-      : "border-admin-line focus:border-champagne"
-  );
 
 export function AdminLoginForm() {
   const [state, formAction] = useActionState(adminSignIn, initialState);
 
   return (
-    <form action={formAction} className="space-y-4" noValidate>
-      <div>
-        <label
-          htmlFor="admin-email"
-          className="mb-1.5 block text-[0.75rem] font-semibold text-admin-muted"
-        >
-          Email
-        </label>
-        <input
-          id="admin-email"
-          name="email"
-          type="email"
-          required
-          autoComplete="username"
-          placeholder="you@zylo.com"
-          aria-invalid={Boolean(state.fieldErrors?.email)}
-          className={inputClass(Boolean(state.fieldErrors?.email))}
-        />
-        {state.fieldErrors?.email && (
-          <p className="mt-1.5 text-[0.75rem] font-medium text-destructive">
-            {state.fieldErrors.email}
-          </p>
-        )}
-      </div>
+    <form action={formAction} className="space-y-9" noValidate>
+      <Field
+        id="admin-email"
+        name="email"
+        type="email"
+        label="Email"
+        autoComplete="username"
+        error={state.fieldErrors?.email}
+      />
 
-      <div>
-        <div className="mb-1.5 flex items-baseline justify-between">
-          <label
-            htmlFor="admin-password"
-            className="text-[0.75rem] font-semibold text-admin-muted"
-          >
-            Password
-          </label>
-        </div>
-        <input
-          id="admin-password"
-          name="password"
-          type="password"
-          required
-          autoComplete="current-password"
-          aria-invalid={Boolean(state.fieldErrors?.password)}
-          className={inputClass(Boolean(state.fieldErrors?.password))}
-        />
-        {state.fieldErrors?.password && (
-          <p className="mt-1.5 text-[0.75rem] font-medium text-destructive">
-            {state.fieldErrors.password}
-          </p>
-        )}
-      </div>
+      <Field
+        id="admin-password"
+        name="password"
+        type="password"
+        label="Password"
+        autoComplete="current-password"
+        error={state.fieldErrors?.password}
+      />
 
-      <SubmitButton />
-
+      {/* Above the button: a refusal read after pressing Sign in should be
+          where the eye already is. A hairline rule rather than a filled alert
+          box — the palette has one loud colour and this is not the place to
+          spend it. */}
       {state.error && (
         <p
           role="alert"
-          className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3.5 py-3 text-[0.75rem] leading-relaxed text-admin-fg"
+          className="border-l border-destructive pl-4 text-sm font-light leading-relaxed text-destructive"
         >
-          <TriangleAlert
-            className="mt-px size-3.5 shrink-0 text-destructive"
-            strokeWidth={2}
-          />
           {state.error}
         </p>
       )}
+
+      <SubmitButton />
     </form>
   );
 }
 
+function Field({
+  id,
+  name,
+  type,
+  label,
+  autoComplete,
+  error,
+}: {
+  id: string;
+  name: string;
+  type: "email" | "password";
+  label: string;
+  autoComplete: string;
+  error?: string;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="eyebrow-sm block text-muted-foreground">
+        {label}
+      </label>
+      <input
+        id={id}
+        name={name}
+        type={type}
+        required
+        autoComplete={autoComplete}
+        aria-invalid={Boolean(error)}
+        className={cn(
+          "mt-3 h-11 w-full border-b bg-transparent px-0 text-base font-light text-foreground",
+          "transition-colors duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          "outline-none hover:border-border-strong focus:border-foreground",
+          error ? "border-destructive" : "border-input"
+        )}
+      />
+      {error && (
+        <p className="mt-2.5 text-xs font-light text-destructive">{error}</p>
+      )}
+    </div>
+  );
+}
+
 /**
- * Split out because `useFormStatus` reports on the nearest parent `<form>`,
- * and only from a component rendered inside it — reading it in the form's own
+ * Split out because `useFormStatus` reports on the nearest parent `<form>` and
+ * only from a component rendered inside it — reading it in the form's own
  * component returns a permanently idle status.
  */
 function SubmitButton() {
@@ -118,10 +114,28 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-admin-fg text-[0.875rem] font-semibold text-admin-panel transition-opacity duration-200 hover:opacity-90 disabled:opacity-60"
+      className={cn(
+        "group flex h-13 w-full items-center justify-center gap-3 bg-foreground px-8",
+        "eyebrow-sm text-background",
+        "transition-opacity duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
+        "outline-none hover:opacity-85 focus-visible:ring-1 focus-visible:ring-foreground focus-visible:ring-offset-4 focus-visible:ring-offset-background",
+        "disabled:cursor-not-allowed disabled:opacity-50"
+      )}
     >
-      {pending && <Loader2 className="size-4 animate-spin" strokeWidth={2} />}
-      {pending ? "Signing in…" : "Sign in"}
+      {pending ? (
+        <>
+          <Loader2 className="size-3.5 animate-spin" strokeWidth={1.5} />
+          Signing in
+        </>
+      ) : (
+        <>
+          Sign in
+          <ArrowRight
+            className="size-3.5 transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:translate-x-1"
+            strokeWidth={1.5}
+          />
+        </>
+      )}
     </button>
   );
 }

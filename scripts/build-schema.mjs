@@ -14,6 +14,13 @@
  *   npm run schema              → supabase/schema.sql, every migration
  *   npm run schema -- --from 7  → supabase/schema-pending.sql, from #7 on
  *
+ * NOTE: the output is a fallback, not the path. Migrations 16, 17 and 18 must
+ * reach the database as three separate transactions — 16 adds `superadmin` to
+ * an enum, and Postgres refuses any use of a new enum value in the transaction
+ * that added it, including inside the function bodies in 17. `npm run db:push`
+ * runs each file in its own transaction and is the supported route; this
+ * concatenation exists for seeding a fresh database by hand.
+ *
  * `--from` exists because a database is only empty once. After the first
  * apply, the full file is not merely redundant — it aborts on its own
  * duplicate-object guard, which is correct but unhelpful when what you

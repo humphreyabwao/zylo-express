@@ -46,7 +46,7 @@ async function revalidateCollections(slug?: string | null) {
 
 async function authorise(): Promise<ActionResult | null> {
   try {
-    await requireAdminAction();
+    await requireAdminAction({ module: "collections" });
     return null;
   } catch (error) {
     if (error instanceof AdminAuthorizationError) {

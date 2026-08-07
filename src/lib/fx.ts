@@ -145,6 +145,17 @@ export async function refreshStoredRates(
       { key: "currency.rates", value: merged },
       { key: "currency.rates_updated_at", value: live.updatedAt },
       { key: "currency.rates_source", value: live.source },
+      /**
+       * When *we* last fetched, which is what staleness must be measured
+       * against.
+       *
+       * Measuring against the provider's own `time_last_update_utc` looks
+       * equivalent and is not: that feed updates once a day, so within hours
+       * of a fetch the data is older than any sensible threshold — and
+       * re-fetching returns the same timestamp. The result was a refresh on
+       * every single request.
+       */
+      { key: "currency.rates_fetched_at", value: new Date().toISOString() },
     ],
     { onConflict: "key" }
   );
@@ -154,6 +165,15 @@ export async function refreshStoredRates(
     return null;
   }
 
-  await invalidateTags([CacheTags.settings, CacheTags.products, CacheTags.facets]);
+  /**
+   * Settings only.
+   *
+   * Exchange rates do not change a single product row — conversion happens at
+   * render from the currency config. Dropping `products` and `facets` here
+   * bought nothing and evicted the whole catalogue cache on every refresh,
+   * which on a connection 500ms from the database is the difference between a
+   * warm page and a cold one.
+   */
+  await invalidateTags([CacheTags.settings]);
   return { ...live, rates: merged };
 }

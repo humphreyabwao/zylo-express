@@ -11,34 +11,31 @@ import {
 export const metadata = { title: "Settings" };
 
 export default async function AdminSettingsPage() {
-  const identity = await requireAdmin();
+  const identity = await requireAdmin("settings");
   const settings = await getStoreSettings();
 
   return (
     <>
       <PageHeader
         title="Settings"
-        description="Store-wide configuration. Changes reach open storefront tabs immediately."
       >
-        <RealtimeRefresh channel="settings" label="settings" />
+        <RealtimeRefresh channel="settings" />
       </PageHeader>
-
-      {/* Saving is gated on `elevated`, so a manager sees the forms, fills one
-          in, and is refused on submit. Saying so up front is the difference
-          between a permission model and a dead end. */}
       {!identity.canElevate && (
         <div className="mb-6 rounded-xl border border-champagne/40 bg-champagne/10 p-4">
           <p className="text-[0.8125rem] leading-relaxed text-champagne-dark">
-            These settings move prices for every visitor at once, so saving them
-            requires an administrator account. You can see the current
-            configuration but not change it.
+            Saving requires an administrator account.
           </p>
         </div>
       )}
 
       <div className="grid gap-6 xl:grid-cols-2">
         <div className="space-y-6">
-          <CurrencySettingsForm config={settings.currency} />
+          <CurrencySettingsForm
+            config={settings.currency}
+            ratesUpdatedAt={settings.ratesUpdatedAt}
+            ratesSource={settings.ratesSource}
+          />
           <StorefrontSettingsForm
             freeShippingThreshold={settings.freeShippingThreshold}
             announcements={settings.announcements}

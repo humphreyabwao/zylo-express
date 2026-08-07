@@ -8,7 +8,7 @@ import { ProductCreateForm } from "@/components/admin/product-create-form";
 export const metadata = { title: "New product" };
 
 export default async function AdminNewProductPage() {
-  await requireAdmin();
+  await requireAdmin("products");
 
   // Fetched here rather than in the form: the catalogue reader is server-only,
   // and the selects need labels, not a second round trip from the browser.
@@ -21,7 +21,6 @@ export default async function AdminNewProductPage() {
     <>
       <PageHeader
         title="New product"
-        description="Create the record, then add photography and further options."
       >
         <AdminButton variant="secondary" href="/admin/products">
           <ArrowLeft className="size-4" strokeWidth={2} />

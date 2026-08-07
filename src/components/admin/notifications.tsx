@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, PackageX, Receipt, MessageSquare, Radio } from "lucide-react";
+import { Bell, PackageX, Receipt, MessageSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useRealtime } from "@/hooks/use-realtime";
@@ -46,7 +46,15 @@ export function AdminNotifications({
     timerRef.current = setTimeout(() => router.refresh(), REFRESH_DEBOUNCE_MS);
   }, [router]);
 
-  const { connected } = useRealtime("inventory", scheduleRefresh);
+  /**
+   * `getNotifications` reads pending orders, unresolved enquiries and
+   * out-of-stock variants. It previously listened on `inventory` alone, so a
+   * new order or a new message never reached the tray until the operator
+   * navigated — which is most of what the tray is for.
+   */
+  useRealtime("orders", scheduleRefresh);
+  useRealtime("messages", scheduleRefresh);
+  useRealtime("inventory", scheduleRefresh);
 
   React.useEffect(
     () => () => {
@@ -98,27 +106,10 @@ export function AdminNotifications({
           aria-label="Notifications"
           className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[22rem] origin-top-right overflow-hidden rounded-lg border border-admin-line bg-admin-panel shadow-xl shadow-black/10 animate-in fade-in-0 zoom-in-95 duration-200"
         >
-          <div className="flex items-center justify-between border-b border-admin-line px-4 py-3">
-            <p className="text-[0.8125rem] font-semibold text-admin-fg">
+          <div className="border-b border-admin-line px-4 py-3">
+            <p className="text-[0.8125rem] font-medium text-admin-fg">
               Notifications
             </p>
-
-            {/* Honest about the live connection: an operator watching a stock
-                figure needs to know whether it is actually being kept current. */}
-            <span
-              className={cn(
-                "flex items-center gap-1.5 text-[0.6875rem] font-medium",
-                connected ? "text-success" : "text-admin-faint"
-              )}
-              title={
-                connected
-                  ? "Receiving live inventory updates"
-                  : "Not connected — figures refresh on navigation"
-              }
-            >
-              <Radio className="size-3" strokeWidth={2} />
-              {connected ? "Live" : "Offline"}
-            </span>
           </div>
 
           <div className="admin-scroll max-h-[24rem] overflow-y-auto">

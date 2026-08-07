@@ -155,7 +155,6 @@ export function ProductCard({
             <Price
               amount={product.price}
               compareAt={product.compareAtPrice}
-              currency={product.currency}
               size="sm"
             />
 

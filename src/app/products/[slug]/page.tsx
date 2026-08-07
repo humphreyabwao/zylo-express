@@ -9,13 +9,14 @@ import {
   getProductBySlug,
   getRelatedProducts,
 } from "@/lib/catalog";
-import { absoluteUrl, formatPrice } from "@/lib/utils";
+import { absoluteUrl } from "@/lib/utils";
 import { Breadcrumbs } from "@/components/catalog/catalog-page";
 import { SectionHeading } from "@/components/layout/section-heading";
 import { ProductRail } from "@/components/commerce/product-rail";
 import { Reveal } from "@/components/motion/reveal";
 import { RatingStars } from "@/components/commerce/rating-stars";
 import { ProductDetail } from "@/components/product/product-detail";
+import { Price } from "@/components/commerce/price";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -155,7 +156,7 @@ export default async function ProductPage({ params }: PageProps) {
               <div>
                 <dt className="eyebrow-sm text-muted-foreground">Price</dt>
                 <dd className="mt-2.5 font-display text-lg font-light tabular-nums">
-                  {formatPrice(product.price, { currency: product.currency })}
+                  <Price amount={product.price} />
                 </dd>
               </div>
             </dl>
@@ -236,7 +237,7 @@ export default async function ProductPage({ params }: PageProps) {
                 : undefined
             }
           />
-          <div className="mt-14">
+          <div className="mt-section-gap">
             <ProductRail products={related} />
           </div>
         </div>

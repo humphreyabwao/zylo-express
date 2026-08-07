@@ -35,7 +35,7 @@ export default async function AdminJournalPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
+  await requireAdmin("journal");
 
   const params = await searchParams;
   const read = (key: string) => {
@@ -61,9 +61,8 @@ export default async function AdminJournalPage({
     <>
       <PageHeader
         title="Journal"
-        description="Long-form editorial. Dated in the future to schedule."
       >
-        <RealtimeRefresh channel="journal" label="the journal" />
+        <RealtimeRefresh channel="journal" />
         <ArticleCreateButton>
           <Plus className="size-4" strokeWidth={2.2} />
           New article
@@ -102,7 +101,7 @@ export default async function AdminJournalPage({
             description={
               filtered
                 ? "Nothing matches these filters. Try widening them."
-                : "The journal carries the house's editorial writing. Write the first piece to get started."
+                : "Write the first piece."
             }
             action={
               !filtered && (

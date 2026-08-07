@@ -1,21 +1,26 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowLeft, Lock } from "lucide-react";
+import Image from "next/image";
 
-import { montserrat } from "@/lib/fonts";
 import { AdminLoginForm } from "@/components/admin/login-form";
 
 /**
  * Portal sign-in.
  *
- * Deliberately outside the `(portal)` route group, and therefore outside the
- * layout that calls `requireAdmin()`. Were it inside, an unauthenticated
- * visitor would be redirected here by the guard, and the guard would run again
- * on arrival — a redirect loop that browsers report as an unhelpfully generic
- * error.
+ * Outside the `(portal)` route group, and therefore outside the layout that
+ * calls `requireAdmin()`. Inside it, an unauthenticated visitor redirected here
+ * by the guard would meet the guard again on arrival — a redirect loop.
  *
- * Live: the form authenticates against Supabase through `adminSignIn`, which
- * also refuses accounts that are not staff. See `@/app/actions/admin/auth`.
+ * ## Why this uses the storefront's language, not the portal's
+ *
+ * Everything behind the door is a workspace: Montserrat, rounded controls,
+ * dense tables. That is right for an operator with forty products to price and
+ * wrong for the door itself, which is the one screen in the portal that is
+ * purely the house presenting itself. So this page borrows the storefront's
+ * vocabulary — Cormorant display, hairline rules, square edges, the long
+ * easing — and the workspace begins on the other side of the sign-in.
+ *
+ * No copy explaining what the portal is, and no link back to the storefront.
+ * Whoever reaches this page either has credentials or has no business here.
  */
 export const metadata: Metadata = {
   title: "Sign in",
@@ -26,53 +31,62 @@ export const dynamic = "force-dynamic";
 
 export default function AdminLoginPage() {
   return (
-    <div
-      className={`${montserrat.variable} flex min-h-svh flex-col bg-admin-canvas font-admin text-admin-fg`}
-    >
-      <header className="flex h-16 shrink-0 items-center justify-between px-6">
-        <Link href="/admin" className="flex items-center gap-3">
-          <span className="grid size-8 place-items-center bg-champagne text-[0.8125rem] font-bold text-obsidian">
-            Z
-          </span>
-          <span className="text-[0.9375rem] font-semibold tracking-tight">
-            ZYLO
-            <span className="ml-1.5 font-light text-admin-muted">Portal</span>
-          </span>
-        </Link>
+    <div className="grid min-h-svh lg:grid-cols-[1.1fr_1fr]">
+      {/* Plate. Hidden below lg — a 40vh letterbox above a form is decoration
+          that costs a phone its first screen. */}
+      <div className="relative hidden overflow-hidden bg-obsidian lg:block">
+        <Image
+          src="/media/campaign/feature-tall.jpg"
+          alt=""
+          fill
+          priority
+          sizes="55vw"
+          className="object-cover opacity-70"
+        />
+        {/* Weighted to the foot so the wordmark keeps its contrast wherever the
+            photograph happens to be light. */}
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-gradient-to-t from-obsidian via-obsidian/25 to-obsidian/40"
+        />
 
-        <Link
-          href="/"
-          className="flex items-center gap-1.5 text-[0.8125rem] font-medium text-admin-faint transition-colors duration-200 hover:text-admin-fg"
-        >
-          <ArrowLeft className="size-3.5" strokeWidth={2} />
-          Storefront
-        </Link>
-      </header>
-
-      <main className="flex flex-1 items-center justify-center px-4 py-12">
-        <div className="w-full max-w-sm">
-          <div className="mb-8 text-center">
-            <span className="mx-auto mb-5 grid size-11 place-items-center rounded-md border border-admin-line bg-admin-panel">
-              <Lock className="size-4.5 text-admin-muted" strokeWidth={1.7} />
+        <div className="relative flex h-full flex-col justify-between p-12 xl:p-16">
+          <span className="flex items-center gap-3.5">
+            <span className="grid size-9 place-items-center bg-champagne font-sans text-sm font-bold text-obsidian">
+              Z
             </span>
+            <span className="font-display text-xl font-light tracking-tight text-porcelain">
+              ZYLO
+            </span>
+          </span>
 
-            <h1 className="text-[1.375rem] font-semibold tracking-tight">
-              Staff sign in
-            </h1>
-            <p className="mt-1.5 text-[0.8125rem] leading-relaxed text-admin-faint">
-              This portal is restricted to ZYLO staff. Customer accounts sign in
-              on the storefront.
-            </p>
-          </div>
-
-          <AdminLoginForm />
+          <span className="eyebrow-sm text-porcelain/40">Staff access</span>
         </div>
-      </main>
+      </div>
 
-      <footer className="shrink-0 px-6 py-6 text-center text-[0.6875rem] text-admin-faint">
-        Protected by rate limiting and row-level security. All access is
-        attributable.
-      </footer>
+      {/* Form */}
+      <div className="flex items-center justify-center px-6 py-16 sm:px-12">
+        <div className="w-full max-w-sm">
+          {/* The plate is hidden on small screens, so the mark comes here. */}
+          <span className="mb-14 flex items-center gap-3.5 lg:hidden">
+            <span className="grid size-9 place-items-center bg-champagne font-sans text-sm font-bold text-obsidian">
+              Z
+            </span>
+            <span className="font-display text-xl font-light tracking-tight">
+              ZYLO
+            </span>
+          </span>
+
+          <p className="eyebrow-sm text-champagne-dark">ZYLO Portal</p>
+          <h1 className="mt-5 font-display text-4xl font-light leading-[1.05]">
+            Sign in
+          </h1>
+
+          <div className="mt-12">
+            <AdminLoginForm />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -228,7 +228,7 @@ export function MediaLibrary({
       {assets.length === 0 ? (
         <EmptyState
           title="Nothing in the library"
-          description="Upload catalogue photography here, or attach it directly from a product's own page. Files uploaded to a product appear here too."
+          description="Upload catalogue photography."
           action={
             <AdminButton onClick={() => inputRef.current?.click()}>
               <Upload className="size-4" strokeWidth={2.2} />

@@ -31,6 +31,8 @@ export function RealtimeRefresh({
   channel:
     | "products"
     | "inventory"
+    | "orders"
+    | "sales"
     | "categories"
     | "collections"
     | "media"

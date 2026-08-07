@@ -36,6 +36,8 @@ export interface StoreSettings {
   announcements: string[];
   /** When the FX provider last updated the stored rates. Null if never. */
   ratesUpdatedAt: string | null;
+  /** When we last fetched. Staleness is measured against this, not the above. */
+  ratesFetchedAt: string | null;
   /** Host the rates came from, for the Settings screen. */
   ratesSource: string | null;
 }
@@ -51,6 +53,7 @@ export const SETTINGS_FALLBACK: StoreSettings = {
   freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
   announcements: [...ANNOUNCEMENTS],
   ratesUpdatedAt: null,
+  ratesFetchedAt: null,
   ratesSource: null,
 };
 
@@ -163,6 +166,10 @@ export async function getStoreSettings(): Promise<StoreSettings> {
           typeof get("currency.rates_updated_at") === "string"
             ? (get("currency.rates_updated_at") as string)
             : null,
+        ratesFetchedAt:
+          typeof get("currency.rates_fetched_at") === "string"
+            ? (get("currency.rates_fetched_at") as string)
+            : null,
         ratesSource:
           typeof get("currency.rates_source") === "string"
             ? (get("currency.rates_source") as string)
@@ -179,7 +186,9 @@ export async function getCurrencyConfig(): Promise<CurrencyConfig> {
 }
 
 /** Rates older than this trigger a background refresh on the next read. */
-const RATE_STALE_HOURS = 12;
+// The provider publishes once a day, so anything under a few hours is asking
+// for the same numbers back. Six means at most four fetches in a day.
+const RATE_STALE_HOURS = 6;
 
 export function ratesAreStale(updatedAt: string | null): boolean {
   if (!updatedAt) return true;
@@ -209,7 +218,12 @@ export async function getStoreSettingsWithLiveRates(): Promise<StoreSettings> {
   if (
     isSupabaseConfigured() &&
     !refreshInFlight &&
-    ratesAreStale(settings.ratesUpdatedAt)
+    // Never during `next build`. The FX call is `cache: "no-store"`, and a
+    // no-store fetch inside a prerender opts that route out of static
+    // generation entirely — which quietly turned the whole catalogue dynamic.
+    // Rates are a runtime concern; the first real request picks them up.
+    process.env.NEXT_PHASE !== "phase-production-build" &&
+    ratesAreStale(settings.ratesFetchedAt)
   ) {
     refreshInFlight = true;
 

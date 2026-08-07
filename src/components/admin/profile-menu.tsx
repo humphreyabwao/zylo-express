@@ -2,28 +2,18 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ChevronDown, ExternalLink, LogOut, Settings, User } from "lucide-react";
+import { ExternalLink, LogOut, Settings, User } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { adminSignOut } from "@/app/actions/admin/auth";
-
-/**
- * Operator menu.
- *
- * Hand-rolled rather than pulled from a dropdown primitive: this needs exactly
- * one popover with three links, and the project deliberately removed its
- * dropdown-menu component. Everything it must get right — outside click, Escape,
- * focus return, `aria-expanded` — is a dozen lines, and doing it here keeps the
- * dependency surface where it was.
- */
 
 export interface OperatorSummary {
   name: string;
   email: string;
   role: string;
-  isPreview: boolean;
 }
 
+/** Operator menu. Avatar trigger, identity, three links, sign out. */
 export function AdminProfileMenu({ operator }: { operator: OperatorSummary }) {
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -38,8 +28,7 @@ export function AdminProfileMenu({ operator }: { operator: OperatorSummary }) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setOpen(false);
-      // Escape must hand focus back, or the caret is left nowhere and the next
-      // Tab starts from the top of the document.
+      // Escape hands focus back, or the next Tab starts from the document top.
       triggerRef.current?.focus();
     };
 
@@ -67,71 +56,52 @@ export function AdminProfileMenu({ operator }: { operator: OperatorSummary }) {
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex items-center gap-2.5 rounded-md py-1 pl-1 pr-2 transition-colors duration-300 hover:bg-admin-hover"
+        aria-label={`Account: ${operator.name}`}
+        className={cn(
+          "grid size-9 place-items-center rounded-full text-[0.6875rem] font-bold transition-colors duration-200",
+          "outline-none focus-visible:ring-2 focus-visible:ring-champagne focus-visible:ring-offset-2 focus-visible:ring-offset-admin-panel",
+          open
+            ? "bg-admin-fg text-admin-panel"
+            : "bg-admin-active text-admin-fg hover:bg-admin-fg hover:text-admin-panel"
+        )}
       >
-        <span className="grid size-8 shrink-0 place-items-center rounded-md bg-admin-active text-[0.6875rem] font-bold text-admin-fg">
-          {initials}
-        </span>
-
-        <span className="hidden text-left leading-tight sm:block">
-          <span className="block text-[0.8125rem] font-semibold text-admin-fg">
-            {operator.name}
-          </span>
-          <span className="block text-[0.6875rem] font-medium capitalize text-admin-faint">
-            {operator.role}
-          </span>
-        </span>
-
-        <ChevronDown
-          className={cn(
-            "size-3.5 text-admin-faint transition-transform duration-300",
-            open && "rotate-180"
-          )}
-          strokeWidth={2}
-        />
+        {initials}
       </button>
 
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-64 origin-top-right overflow-hidden rounded-lg border border-admin-line bg-admin-panel shadow-xl shadow-black/10 animate-in fade-in-0 zoom-in-95 duration-200"
+          className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-60 origin-top-right overflow-hidden rounded-lg border border-admin-line bg-admin-panel shadow-xl shadow-black/10 animate-in fade-in-0 zoom-in-95 duration-150"
         >
-          <div className="border-b border-admin-line px-4 py-3">
-            <p className="truncate text-[0.8125rem] font-semibold text-admin-fg">
-              {operator.name}
-            </p>
-            <p className="truncate text-[0.75rem] text-admin-faint">
-              {operator.email}
-            </p>
-
-            {operator.isPreview && (
-              <p className="mt-2 rounded border border-champagne/40 bg-champagne/10 px-2 py-1 text-[0.6875rem] font-medium leading-snug text-admin-muted">
-                Preview identity — not a real account.
-              </p>
-            )}
+          <div className="flex items-center gap-3 border-b border-admin-line px-4 py-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-admin-active text-[0.6875rem] font-bold text-admin-fg">
+              {initials}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-[0.8125rem] font-semibold text-admin-fg">
+                {operator.name}
+              </span>
+              <span className="block truncate text-[0.75rem] text-admin-faint">
+                {operator.email}
+              </span>
+            </span>
           </div>
 
           <div className="p-1">
-            <MenuLink href="/admin/profile" icon={User} label="Your profile" />
+            <MenuLink href="/admin/profile" icon={User} label="Profile" />
             <MenuLink href="/admin/settings" icon={Settings} label="Settings" />
-            <MenuLink
-              href="/"
-              icon={ExternalLink}
-              label="View storefront"
-              external
-            />
+            <MenuLink href="/" icon={ExternalLink} label="Storefront" external />
           </div>
 
           <div className="border-t border-admin-line p-1">
             {/* A form, not an onClick: `adminSignOut` ends in a redirect, and
                 React's form integration follows it. It also keeps working
-                without JavaScript, which for the control that ends a session
-                on a shared machine is worth having. */}
+                without JavaScript. */}
             <form action={adminSignOut}>
               <button
                 type="submit"
                 role="menuitem"
-                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-[0.8125rem] font-medium text-admin-muted transition-colors duration-200 hover:bg-admin-hover hover:text-admin-fg"
+                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-[0.8125rem] font-medium text-admin-muted transition-colors duration-150 hover:bg-admin-hover hover:text-admin-fg"
               >
                 <LogOut className="size-4" strokeWidth={1.7} />
                 Sign out
@@ -160,7 +130,7 @@ function MenuLink({
       href={href}
       role="menuitem"
       {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-      className="flex items-center gap-2.5 rounded-md px-3 py-2 text-[0.8125rem] font-medium text-admin-muted transition-colors duration-200 hover:bg-admin-hover hover:text-admin-fg"
+      className="flex items-center gap-2.5 rounded-md px-3 py-2 text-[0.8125rem] font-medium text-admin-muted transition-colors duration-150 hover:bg-admin-hover hover:text-admin-fg"
     >
       <Icon className="size-4" strokeWidth={1.7} />
       {label}

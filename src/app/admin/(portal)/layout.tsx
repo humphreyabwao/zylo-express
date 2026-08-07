@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 
-import { montserrat } from "@/lib/fonts";
 import { requireAdmin } from "@/lib/admin/guard";
+import { getStoreSettings } from "@/lib/settings";
+import { AdminCurrencyProvider } from "@/components/admin/admin-currency";
+import { GRANTABLE_MODULES } from "@/lib/admin/permissions";
 import { getNotifications } from "@/lib/admin/queries";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { ADMIN_RAIL_COOKIE } from "@/components/admin/sidebar";
@@ -32,12 +34,20 @@ export default async function AdminLayout({
   // opts out of this layout via its own route segment — see admin/login.
   const identity = await requireAdmin();
 
-  const [notifications, cookieStore] = await Promise.all([
+  const [notifications, settings, cookieStore] = await Promise.all([
     getNotifications(),
+    getStoreSettings(),
     cookies(),
   ]);
 
   const collapsed = cookieStore.get(ADMIN_RAIL_COOKIE)?.value === "1";
+
+  // Plain strings: an `AdminModule` carries a Lucide icon, and a component
+  // cannot be serialised across the boundary. The rail rebuilds the nav from
+  // these. A superadmin holds everything, so it sends every segment.
+  const permitted = identity.unrestricted
+    ? GRANTABLE_MODULES.map((module) => module.segment)
+    : identity.permissions;
 
   const name =
     [identity.profile.first_name, identity.profile.last_name]
@@ -45,7 +55,8 @@ export default async function AdminLayout({
       .join(" ") || identity.profile.email;
 
   return (
-    <div className={`${montserrat.variable} contents`}>
+    <div className="contents">
+      <AdminCurrencyProvider config={settings.currency}>
       <AdminShell
         operator={{
           name,
@@ -53,10 +64,12 @@ export default async function AdminLayout({
           role: identity.profile.role,
         }}
         notifications={notifications}
+        permitted={permitted}
         defaultCollapsed={collapsed}
       >
         {children}
       </AdminShell>
+      </AdminCurrencyProvider>
     </div>
   );
 }

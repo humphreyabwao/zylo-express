@@ -17,7 +17,7 @@ export type ProductFlagDb =
 
 export type CurrencyDb = "USD" | "EUR" | "GBP";
 export type OptionTypeDb = "color" | "size" | "material" | "text";
-export type UserRoleDb = "customer" | "staff" | "admin";
+export type UserRoleDb = "customer" | "staff" | "admin" | "superadmin";
 export type ShippingSpeedDb = "standard" | "express" | "same-day";
 export type PromotionKindDb = "percentage" | "fixed" | "free-shipping";
 export type MessageStatusDb = "new" | "in-progress" | "resolved";
@@ -152,6 +152,11 @@ export type ProfileRow = {
   last_name: string | null;
   phone: string | null;
   role: UserRoleDb;
+  /**
+   * Admin module segments this account may reach, e.g. `["products"]`.
+   * Ignored for `superadmin`. See `src/lib/admin/permissions.ts`.
+   */
+  permissions: string[];
   marketing_opt_in: boolean;
   created_at: string;
 }
@@ -341,6 +346,42 @@ export type AppointmentRow = {
   updated_at: string;
 }
 
+export type SalePaymentMethodDb = "cash" | "card" | "mpesa" | "other";
+
+export type SaleRow = {
+  id: string;
+  /** ZY-POS-000000, assigned by trigger. */
+  reference: string;
+  operator_id: string | null;
+  /** Copied, so a receipt still names the operator after the account goes. */
+  operator_name: string;
+  customer_name: string | null;
+  customer_email: string | null;
+  subtotal: number;
+  discount: number;
+  total: number;
+  currency: CurrencyDb;
+  payment_method: SalePaymentMethodDb;
+  /** Cash tendered, for change. Null for every other method. */
+  tendered: number | null;
+  note: string;
+  created_at: string;
+}
+
+export type SaleItemRow = {
+  id: string;
+  sale_id: string;
+  /** Null once the variant is deleted — the copied fields below survive it. */
+  variant_id: string | null;
+  product_name: string;
+  variant_title: string;
+  sku: string;
+  /** What it sold for, not what it costs today. */
+  unit_price: number;
+  quantity: number;
+  line_total: number;
+}
+
 export type NewsletterSubscriberRow = {
   id: string;
   email: string;
@@ -457,6 +498,8 @@ export type Database = {
       // `reference` is assigned by a trigger, so an insert must be allowed to
       // omit it — `Table`'s Insert defaults to Partial<Row>, which covers that.
       appointments: Table<AppointmentRow>;
+      sales: Table<SaleRow>;
+      sale_items: Table<SaleItemRow>;
     };
     Views: Record<string, never>;
     Functions: {
@@ -468,6 +511,23 @@ export type Database = {
        * UPDATE` needs. Returns void so it cannot be used to probe whether an
        * address is already on the list. See migration 12.
        */
+      /**
+       * Writes a counter sale and decrements its stock in one transaction.
+       * SECURITY INVOKER, so RLS is what authorises it. See migration 15.
+       */
+      record_sale: {
+        Args: {
+          p_operator_name: string;
+          p_customer_name: string | null;
+          p_customer_email: string | null;
+          p_payment_method: SalePaymentMethodDb;
+          p_discount: number;
+          p_tendered: number | null;
+          p_note: string;
+          p_items: { variantId: string; quantity: number }[];
+        };
+        Returns: SaleRow;
+      };
       subscribe_to_newsletter: {
         Args: { p_email: string; p_source?: string };
         Returns: void;
@@ -533,6 +593,7 @@ export type Database = {
       message_status: MessageStatusDb;
       appointment_status: AppointmentStatusDb;
       appointment_mode: AppointmentModeDb;
+      sale_payment_method: SalePaymentMethodDb;
     };
     CompositeTypes: Record<string, never>;
   };

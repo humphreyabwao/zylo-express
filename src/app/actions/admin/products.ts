@@ -57,7 +57,7 @@ async function revalidateCatalogue(productSlug?: string) {
 
 async function authorise(elevated = false): Promise<ActionResult | null> {
   try {
-    await requireAdminAction({ elevated });
+    await requireAdminAction({ elevated, module: "products" });
     return null;
   } catch (error) {
     if (error instanceof AdminAuthorizationError) {

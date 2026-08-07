@@ -196,7 +196,7 @@ export function ConfirmationView({
         </div>
       </div>
 
-      <div className="mt-14 flex flex-wrap justify-center gap-4">
+      <div className="mt-section-gap flex flex-wrap justify-center gap-4">
         <Button asChild size="lg">
           <Link href="/account/orders">Track your order</Link>
         </Button>
@@ -248,7 +248,7 @@ export function ConfirmationFallback({ reference }: { reference?: string }) {
         </p>
       )}
 
-      <div className="mt-14 flex flex-wrap justify-center gap-4">
+      <div className="mt-section-gap flex flex-wrap justify-center gap-4">
         <Button asChild size="lg">
           <Link href="/account/orders">View your orders</Link>
         </Button>

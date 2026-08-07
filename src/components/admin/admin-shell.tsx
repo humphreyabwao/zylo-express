@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { ADMIN_NAV, ADMIN_ROOT, moduleHref } from "@/lib/admin/nav";
+import { ADMIN_ROOT, buildNav, moduleHref } from "@/lib/admin/nav";
 import type { AdminNotification } from "@/lib/admin/queries";
 import { AdminSidebar } from "@/components/admin/sidebar";
 import { AdminTopbar } from "@/components/admin/topbar";
@@ -23,15 +23,20 @@ export function AdminShell({
   children,
   operator,
   notifications,
+  permitted,
   defaultCollapsed,
 }: {
   children: React.ReactNode;
   operator: OperatorSummary;
   notifications: AdminNotification[];
+  /** Module segments this operator holds. See `AdminSidebar`. */
+  permitted: string[];
   defaultCollapsed: boolean;
 }) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const pathname = usePathname();
+
+  const nav = React.useMemo(() => buildNav(permitted), [permitted]);
 
   // Closing on navigation is done by the links themselves rather than by an
   // effect watching `pathname`. Same result, one render fewer, and the reason
@@ -48,7 +53,7 @@ export function AdminShell({
 
   return (
     <div className="flex min-h-svh bg-admin-canvas font-admin text-admin-fg">
-      <AdminSidebar defaultCollapsed={defaultCollapsed} />
+      <AdminSidebar permitted={permitted} defaultCollapsed={defaultCollapsed} />
 
       {/* Mobile drawer */}
       <div
@@ -69,11 +74,11 @@ export function AdminShell({
         <nav
           aria-label="Modules"
           className={cn(
-            "absolute inset-y-0 left-0 flex w-[17rem] flex-col border-r border-admin-line bg-admin-rail transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
+            "absolute inset-y-0 left-0 flex w-[15rem] flex-col bg-admin-rail text-admin-rail-fg transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
             mobileOpen ? "translate-x-0" : "-translate-x-full"
           )}
         >
-          <div className="flex h-16 shrink-0 items-center justify-between border-b border-admin-line px-5">
+          <div className="flex h-16 shrink-0 items-center justify-between border-b border-admin-rail-line px-5">
             <Link href={ADMIN_ROOT} className="flex items-center gap-3">
               <span className="grid size-8 place-items-center rounded-lg bg-champagne text-[0.8125rem] font-bold text-obsidian">
                 Z
@@ -88,14 +93,14 @@ export function AdminShell({
               type="button"
               onClick={() => setMobileOpen(false)}
               aria-label="Close navigation"
-              className="grid size-8 place-items-center rounded-md text-admin-muted hover:bg-admin-hover hover:text-admin-fg"
+              className="grid size-8 place-items-center rounded-md text-admin-rail-muted hover:text-admin-rail-fg"
             >
               <X className="size-4" strokeWidth={1.8} />
             </button>
           </div>
 
           <div className="admin-scroll flex-1 overflow-y-auto px-3 py-5">
-            {ADMIN_NAV.map((group) => (
+            {nav.map((group) => (
               <div key={group.label} className="mb-6 last:mb-0">
                 <p className="mb-2 px-3 text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-admin-faint">
                   {group.label}
@@ -118,8 +123,8 @@ export function AdminShell({
                           className={cn(
                             "flex items-center gap-3 rounded-md px-3 py-2.5 text-[0.8125rem] font-medium transition-colors duration-300",
                             active
-                              ? "bg-admin-active text-admin-fg"
-                              : "text-admin-muted hover:bg-admin-hover hover:text-admin-fg"
+                              ? "bg-admin-rail-hover text-admin-rail-fg"
+                              : "text-admin-rail-muted hover:bg-admin-rail-hover hover:text-admin-rail-fg"
                           )}
                         >
                           <Icon className="size-[1.125rem] shrink-0" strokeWidth={1.6} />

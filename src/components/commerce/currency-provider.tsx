@@ -9,7 +9,6 @@ import {
   formatCurrency,
   type CurrencyConfig,
 } from "@/lib/currency";
-import { useRealtime } from "@/hooks/use-realtime";
 
 /**
  * The shopper's display currency, and the rates to reach it.
@@ -96,16 +95,28 @@ export function CurrencyProvider({
   const currency = initialCurrency;
 
   /**
-   * A settings write re-renders every open storefront tab.
+   * No realtime subscription here. This is deliberate, and it was a bug.
    *
-   * This is the "changes on the storefront when I change it in admin" part.
-   * `router.refresh()` re-runs the server render, which re-reads the settings
-   * — whose cache tag the admin action has just dropped — and hands back a new
-   * `initialCurrency` and `config` through the effect above.
+   * This provider previously opened an SSE connection to `/api/realtime` so an
+   * admin changing the store currency would reach tabs that were already open.
+   * That put a permanent, never-closing connection on **every storefront page
+   * for every visitor** — and browsers allow only about six concurrent
+   * connections per origin over HTTP/1.1. A couple of tabs exhausted the pool,
+   * and every subsequent request, including the RSC payloads that client-side
+   * navigation depends on, failed with "TypeError: Failed to fetch". Clicking a
+   * link stopped rendering anything.
+   *
+   * It was also a serverless function held open per visitor, against a route
+   * rate-limited to twelve connections a minute.
+   *
+   * Settings changes still propagate: the admin action drops the cache tag on
+   * save and `getStoreSettings` has a 60s ceiling, so any new request — a
+   * navigation, a reload — picks them up within the minute. Live-updating a
+   * tab that is already sitting still is not worth a connection per visitor.
+   *
+   * SSE stays where it belongs: the admin portal, where there are a handful of
+   * operators rather than every shopper.
    */
-  useRealtime("settings", () => {
-    startTransition(() => router.refresh());
-  });
 
   const setCurrency = React.useCallback(
     (next: string) => {

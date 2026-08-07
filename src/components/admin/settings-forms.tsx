@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, X } from "lucide-react";
+import { Loader2, Plus, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import {
+  refreshExchangeRates,
   updateCurrencySettings,
   updateStorefrontSettings,
 } from "@/app/actions/admin/settings";
@@ -32,8 +33,17 @@ import { Field, inputClass } from "@/components/admin/modal";
 
 /* ----------------------------------------------------------------- currency */
 
-export function CurrencySettingsForm({ config }: { config: CurrencyConfig }) {
+export function CurrencySettingsForm({
+  config,
+  ratesUpdatedAt,
+  ratesSource,
+}: {
+  config: CurrencyConfig;
+  ratesUpdatedAt: string | null;
+  ratesSource: string | null;
+}) {
   const router = useRouter();
+  const [refreshing, setRefreshing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
@@ -102,21 +112,38 @@ export function CurrencySettingsForm({ config }: { config: CurrencyConfig }) {
     <Panel>
       <PanelHeader
         title="Currency"
-        description={`Prices are stored in ${base} and converted for display.`}
+        description={
+          ratesUpdatedAt
+            ? `Rates from ${ratesSource ?? "provider"} · ${new Date(ratesUpdatedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+            : "Rates not yet fetched"
+        }
+        action={
+          <AdminButton
+            variant="secondary"
+            size="sm"
+            disabled={refreshing}
+            onClick={async () => {
+              setRefreshing(true);
+              const result = await refreshExchangeRates();
+              setRefreshing(false);
+              if (result.ok) {
+                toast.success(result.message);
+                router.refresh();
+              } else {
+                toast.error(result.message);
+              }
+            }}
+          >
+            <RefreshCw
+              className={cn("size-3.5", refreshing && "animate-spin")}
+              strokeWidth={2}
+            />
+            {refreshing ? "Fetching…" : "Refresh rates"}
+          </AdminButton>
+        }
       />
 
       <form onSubmit={submit} className="space-y-5 p-5">
-        <div className="rounded-lg border border-admin-line bg-admin-hover p-4">
-          <p className="text-[0.75rem] font-semibold text-admin-fg">
-            Ledger currency: <span className="admin-figure">{base}</span>
-          </p>
-          <p className="mt-1.5 text-[0.75rem] leading-relaxed text-admin-faint">
-            Every price, order total and payment amount in the database is
-            stored in {base} minor units, and customers are charged in {base}.
-            Changing it would convert nothing — it would only change what those
-            stored numbers claim to mean — so it is not editable here.
-          </p>
-        </div>
 
         <Field
           label="Default currency"
@@ -184,12 +211,8 @@ export function CurrencySettingsForm({ config }: { config: CurrencyConfig }) {
           <p className="mb-1 text-[0.75rem] font-semibold text-admin-fg">
             Exchange rates
           </p>
-          <p className="mb-3 text-[0.6875rem] leading-relaxed text-admin-faint">
-            Units of each currency per 1 {base}. These convert prices for
-            display only — what a customer is charged is computed from the{" "}
-            {base} books at checkout, and the rate used is recorded on the
-            payment. Set them from a real FX source and widen them to cover the
-            spread you are willing to absorb.
+          <p className="mb-3 text-[0.6875rem] text-admin-faint">
+            Units per 1 {base}. Display only.
           </p>
 
           {errors.rates && (
@@ -320,7 +343,7 @@ export function StorefrontSettingsForm({
     <Panel>
       <PanelHeader
         title="Storefront"
-        description="Copy and thresholds a shopper sees."
+        
       />
 
       <form onSubmit={submit} className="space-y-5 p-5">
@@ -339,11 +362,6 @@ export function StorefrontSettingsForm({
               "admin-figure"
             )}
           />
-          <span className="mt-1.5 block text-[0.6875rem] text-admin-faint">
-            Compared against the order subtotal in {base}, before any currency
-            the shopper is browsing in — so the threshold is the same order
-            value for everyone.
-          </span>
         </Field>
 
         <div>
@@ -427,7 +445,7 @@ export function CurrencyPreview({ config }: { config: CurrencyConfig }) {
     <Panel>
       <PanelHeader
         title="Preview"
-        description="The same three prices, as each currency renders them."
+        
       />
 
       <div className="admin-scroll overflow-x-auto">

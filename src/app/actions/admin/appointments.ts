@@ -39,7 +39,7 @@ function revalidateDiary() {
 
 async function authorise(): Promise<ActionResult | null> {
   try {
-    await requireAdminAction();
+    await requireAdminAction({ module: "appointments" });
     return null;
   } catch (error) {
     if (error instanceof AdminAuthorizationError) {

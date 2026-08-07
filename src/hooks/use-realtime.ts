@@ -83,6 +83,22 @@ export interface AppointmentChange {
   status: "requested" | "confirmed" | "completed" | "cancelled";
 }
 
+/** Reference and total only — never the customer. See the route. */
+export interface SaleChange {
+  type: "INSERT" | "UPDATE" | "DELETE";
+  saleId: string;
+  reference: string;
+  total: number;
+}
+
+/** Reference and status only — never the address or total. See the route. */
+export interface OrderChange {
+  type: "INSERT" | "UPDATE" | "DELETE";
+  orderId: string;
+  reference: string;
+  status: string;
+}
+
 /** The key that changed, never its value. See the route. */
 export interface SettingsChange {
   type: "INSERT" | "UPDATE" | "DELETE";
@@ -106,6 +122,8 @@ export interface SubscriberChange {
 type ChannelMap = {
   inventory: InventoryChange;
   products: ProductChange;
+  orders: OrderChange;
+  sales: SaleChange;
   categories: CategoryChange;
   collections: CollectionChange;
   media: MediaChange;

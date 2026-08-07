@@ -37,7 +37,7 @@ export default async function CartPage() {
             title="Pieces that pair well"
             link={{ href: "/shop", label: "Shop all" }}
           />
-          <div className="mt-14">
+          <div className="mt-section-gap">
             <ProductRail products={suggestions} />
           </div>
         </div>

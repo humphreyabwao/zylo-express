@@ -52,7 +52,7 @@ async function authorise(): Promise<ActionResult | null> {
     // Settings move prices for every visitor at once. That is a different
     // weight of change from editing one product, so it takes an administrator
     // rather than any signed-in member of staff.
-    await requireAdminAction({ elevated: true });
+    await requireAdminAction({ elevated: true, module: "settings" });
     return null;
   } catch (error) {
     if (error instanceof AdminAuthorizationError) {

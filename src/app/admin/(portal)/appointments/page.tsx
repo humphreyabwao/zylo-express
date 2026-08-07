@@ -40,7 +40,7 @@ export default async function AdminAppointmentsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
+  await requireAdmin("appointments");
 
   const params = await searchParams;
   const read = (key: string) => {
@@ -79,9 +79,8 @@ export default async function AdminAppointmentsPage({
     <>
       <PageHeader
         title="Appointments"
-        description="Private appointment requests from the storefront. Confirming records the time; you write to the guest yourself."
       >
-        <RealtimeRefresh channel="appointments" label="the diary" />
+        <RealtimeRefresh channel="appointments" />
       </PageHeader>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -95,7 +94,6 @@ export default async function AdminAppointmentsPage({
           label="Awaiting reply"
           value={String(counts.requested)}
           tone={counts.requested > 0 ? "warning" : "neutral"}
-          hint={counts.requested > 0 ? "Nobody has confirmed a time" : "All answered"}
           icon={CalendarClock}
           href="/admin/appointments?status=requested"
         />
@@ -110,11 +108,6 @@ export default async function AdminAppointmentsPage({
           label="Overdue"
           value={String(counts.overdue)}
           tone={counts.overdue > 0 ? "critical" : "neutral"}
-          hint={
-            counts.overdue > 0
-              ? "Still open, and the date has passed"
-              : "Nothing has slipped"
-          }
           icon={TriangleAlert}
         />
       </div>
@@ -169,7 +162,7 @@ export default async function AdminAppointmentsPage({
             description={
               filtered
                 ? "Nothing matches these filters. Try widening them."
-                : "Requests made at /services/appointments land here. The diary is admin-only — it is never readable from the storefront."
+                : "Requests from /services/appointments arrive here."
             }
           />
         ) : (

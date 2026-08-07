@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
-import { formatPrice } from "@/lib/utils";
 import { storageUrl } from "@/lib/storage";
 import { requireAdmin } from "@/lib/admin/guard";
 import { listProducts, normalisePage, LOW_STOCK_THRESHOLD } from "@/lib/admin/queries";
@@ -18,6 +17,7 @@ import {
   Th,
   Tr,
 } from "@/components/admin/primitives";
+import { Money } from "@/components/admin/admin-currency";
 import { ListToolbar } from "@/components/admin/toolbar";
 import { Pagination } from "@/components/admin/pagination";
 import { ProductActions } from "@/components/admin/product-actions";
@@ -30,7 +30,7 @@ export default async function AdminProductsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
+  await requireAdmin("products");
 
   const params = await searchParams;
   const read = (key: string) => {
@@ -55,9 +55,8 @@ export default async function AdminProductsPage({
     <>
       <PageHeader
         title="Products"
-        description="Create, price and publish everything in the catalogue."
       >
-        <RealtimeRefresh channel="products" label="catalogue" />
+        <RealtimeRefresh channel="products" />
         <AdminButton href="/admin/products/new">
           <Plus className="size-4" strokeWidth={2.2} />
           New product
@@ -171,10 +170,10 @@ export default async function AdminProductsPage({
                     </Td>
 
                     <Td align="right" className="admin-figure font-semibold">
-                      {formatPrice(product.price)}
+                      <Money amount={product.price} />
                       {product.compare_at_price && (
                         <span className="ml-1.5 font-normal text-admin-faint line-through">
-                          {formatPrice(product.compare_at_price)}
+                          <Money amount={product.compare_at_price} />
                         </span>
                       )}
                     </Td>

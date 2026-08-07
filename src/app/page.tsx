@@ -46,7 +46,7 @@ export default async function HomePage() {
           description="Eight objects that show what the workshop can do — the icons, and the ones that take longest."
           link={{ href: "/shop", label: "Shop all" }}
         />
-        <div className="mt-14">
+        <div className="mt-section-gap">
           <ProductRail products={featured} />
         </div>
       </section>
@@ -79,7 +79,7 @@ export default async function HomePage() {
             title="New to the maison"
             link={{ href: "/collections/new-in", label: "See everything new" }}
           />
-          <div className="mt-14">
+          <div className="mt-section-gap">
             <ProductRail products={newArrivals} />
           </div>
         </div>

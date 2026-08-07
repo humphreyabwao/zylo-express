@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { ADMIN_NAV, ADMIN_ROOT, moduleHref } from "@/lib/admin/nav";
+import { ADMIN_ROOT, buildNav, moduleHref } from "@/lib/admin/nav";
 
 /**
  * The module rail.
@@ -22,14 +22,29 @@ const COOKIE = "zylo_admin_rail";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 export function AdminSidebar({
+  permitted,
   defaultCollapsed,
   onCollapsedChange,
 }: {
+  /**
+   * Module segments this operator holds — plain strings.
+   *
+   * Not the modules themselves: an `AdminModule` carries a Lucide icon, which
+   * is a component, and a component cannot be serialised across the
+   * server/client boundary. The nav is rebuilt here from `ADMIN_NAV`, which is
+   * a static constant already in this bundle.
+   *
+   * This is presentation only. What an operator may actually reach is decided
+   * by the page and action guards on the server.
+   */
+  permitted: string[];
   defaultCollapsed: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(defaultCollapsed);
+
+  const nav = React.useMemo(() => buildNav(permitted), [permitted]);
 
   const toggle = React.useCallback(() => {
     setCollapsed((previous) => {
@@ -44,15 +59,15 @@ export function AdminSidebar({
     <aside
       data-collapsed={collapsed}
       className={cn(
-        "group/rail sticky top-0 z-30 hidden h-svh shrink-0 flex-col border-r border-admin-line bg-admin-rail lg:flex",
+        "group/rail sticky top-0 z-30 hidden h-svh shrink-0 flex-col bg-admin-rail text-admin-rail-fg lg:flex",
         // The only transitioned property is width. Animating the whole layout
         // would drag every table cell to the right through a repaint.
         "transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
-        collapsed ? "w-[4.5rem]" : "w-[17rem]"
+        collapsed ? "w-[4.25rem]" : "w-[14.5rem]"
       )}
     >
       {/* Wordmark */}
-      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-admin-line px-5">
+      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-admin-rail-line px-5">
         <Link
           href={ADMIN_ROOT}
           className="flex items-center gap-3 overflow-hidden"
@@ -62,23 +77,23 @@ export function AdminSidebar({
           </span>
           <span
             className={cn(
-              "whitespace-nowrap text-[0.9375rem] font-semibold tracking-tight text-admin-fg transition-all duration-300",
+              "whitespace-nowrap text-[0.9375rem] font-medium tracking-tight text-admin-rail-fg transition-all duration-300",
               collapsed && "pointer-events-none w-0 -translate-x-2 opacity-0"
             )}
           >
             ZYLO
-            <span className="ml-1.5 font-light text-admin-muted">Portal</span>
+            <span className="ml-1.5 font-light text-admin-rail-muted">Portal</span>
           </span>
         </Link>
       </div>
 
       {/* Modules */}
       <nav className="admin-scroll flex-1 overflow-y-auto overflow-x-hidden px-3 py-5">
-        {ADMIN_NAV.map((group) => (
+        {nav.map((group) => (
           <div key={group.label} className="mb-6 last:mb-0">
             <p
               className={cn(
-                "mb-2 px-3 text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-admin-faint transition-all duration-300",
+                "mb-2 px-3 text-[0.625rem] font-medium uppercase tracking-[0.2em] text-admin-rail-label transition-all duration-300",
                 collapsed && "pointer-events-none h-0 opacity-0"
               )}
             >
@@ -101,10 +116,10 @@ export function AdminSidebar({
                       title={collapsed ? entry.label : undefined}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "group/item relative flex items-center gap-3 rounded-md px-3 py-2.5 transition-colors duration-300",
+                        "group/item relative flex items-center gap-3 px-3 py-2.5 transition-colors duration-200",
                         active
-                          ? "bg-admin-active text-admin-fg"
-                          : "text-admin-muted hover:bg-admin-hover hover:text-admin-fg"
+                          ? "bg-admin-rail-hover text-admin-rail-fg"
+                          : "text-admin-rail-muted hover:bg-admin-rail-hover hover:text-admin-rail-fg"
                       )}
                     >
                       {/* Active marker, drawn rather than nudged so the row
@@ -149,13 +164,13 @@ export function AdminSidebar({
       </nav>
 
       {/* Minimiser */}
-      <div className="shrink-0 border-t border-admin-line p-3">
+      <div className="shrink-0 border-t border-admin-rail-line p-3">
         <button
           type="button"
           onClick={toggle}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           aria-expanded={!collapsed}
-          className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-admin-muted transition-colors duration-300 hover:bg-admin-hover hover:text-admin-fg"
+          className="flex w-full items-center gap-3 px-3 py-2.5 text-admin-rail-muted transition-colors duration-300 hover:text-admin-rail-fg"
         >
           {collapsed ? (
             <PanelLeftOpen className="size-[1.125rem] shrink-0" strokeWidth={1.6} />

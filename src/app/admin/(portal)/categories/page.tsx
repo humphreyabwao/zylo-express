@@ -26,7 +26,7 @@ export default async function AdminCategoriesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
+  await requireAdmin("categories");
 
   const params = await searchParams;
   const read = (key: string) => {
@@ -52,9 +52,8 @@ export default async function AdminCategoriesPage({
     <>
       <PageHeader
         title="Categories"
-        description="The shop's navigation. Every product files under exactly one."
       >
-        <RealtimeRefresh channel="categories" label="categories" />
+        <RealtimeRefresh channel="categories" />
         <CategoryCreateButton groups={groups}>
           <Plus className="size-4" strokeWidth={2.2} />
           New category
@@ -100,7 +99,7 @@ export default async function AdminCategoriesPage({
             description={
               filtered
                 ? "Nothing matches these filters. Try widening them."
-                : "Categories are how shoppers navigate the catalogue. Create the first one to get started."
+                : "Create the first category."
             }
             action={
               !filtered && (

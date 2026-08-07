@@ -29,7 +29,7 @@ export default async function AdminPagesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
+  await requireAdmin("pages");
 
   const params = await searchParams;
   const read = (key: string) => {
@@ -56,9 +56,8 @@ export default async function AdminPagesPage({
     <>
       <PageHeader
         title="Pages"
-        description="Help centre and legal copy, served at /help and /legal."
       >
-        <RealtimeRefresh channel="pages" label="pages" />
+        <RealtimeRefresh channel="pages" />
         <PageCreateButton>
           <Plus className="size-4" strokeWidth={2.2} />
           New page
@@ -98,7 +97,7 @@ export default async function AdminPagesPage({
             description={
               filtered
                 ? "Nothing matches these filters. Try widening them."
-                : "The storefront is serving its built-in copy from src/data/content.ts. Create a page here and it takes over that URL; delete every page and the built-in copy returns."
+                : "Create a page to take over its storefront URL."
             }
             action={
               !filtered && (

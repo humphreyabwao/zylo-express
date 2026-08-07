@@ -128,7 +128,7 @@ export default async function ArticlePage({ params }: PageProps) {
               </Reveal>
             ))}
 
-            <div className="mt-14 border-t border-hairline pt-8">
+            <div className="mt-section-gap border-t border-hairline pt-8">
               <p className="eyebrow-sm text-muted-foreground">
                 Written by {article.author}
               </p>
@@ -146,7 +146,7 @@ export default async function ArticlePage({ params }: PageProps) {
             link={{ href: "/journal", label: "All articles" }}
           />
 
-          <ul className="mt-14 grid gap-x-8 gap-y-12 md:grid-cols-3">
+          <ul className="mt-section-gap grid gap-x-8 gap-y-12 md:grid-cols-3">
             {more.map((entry, index) => (
               <li key={entry.slug}>
                 <Reveal delay={index * 80}>
@@ -183,7 +183,7 @@ export default async function ArticlePage({ params }: PageProps) {
           title="Pieces mentioned in the journal"
           link={{ href: "/shop", label: "Shop all" }}
         />
-        <div className="mt-14">
+        <div className="mt-section-gap">
           <ProductRail products={featured} />
         </div>
       </section>

@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import { Search, X } from "lucide-react";
 
 import { useIsSearchOpen, useUiStore } from "@/store/ui-store";
-import { cn, formatPrice } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { useCurrency } from "@/components/commerce/currency-provider";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 
 const SUGGESTIONS = [
@@ -41,6 +42,7 @@ export interface SearchOverlayProps {
 }
 
 export function SearchOverlay({ categories }: SearchOverlayProps) {
+  const { format } = useCurrency();
   const open = useIsSearchOpen();
   const closeOverlay = useUiStore((s) => s.closeOverlay);
   const router = useRouter();
@@ -212,9 +214,7 @@ export function SearchOverlay({ categories }: SearchOverlayProps) {
                           {product.tagline}
                         </p>
                         <p className="mt-1 font-display text-sm font-semibold tabular-nums">
-                          {formatPrice(product.price, {
-                            currency: product.currency as "USD" | "EUR" | "GBP",
-                          })}
+                          {format(product.price)}
                         </p>
                       </div>
                     </Link>
@@ -231,7 +231,7 @@ export function SearchOverlay({ categories }: SearchOverlayProps) {
               </button>
             </div>
           ) : noResults ? (
-            <div className="mt-14 space-y-3">
+            <div className="mt-section-gap space-y-3">
               <p className="font-display text-2xl font-light">
                 Nothing matches “{trimmed}”
               </p>

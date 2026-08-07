@@ -1,6 +1,6 @@
-import { Receipt, TriangleAlert, Users, Wallet } from "lucide-react";
+import { Receipt, Users, Wallet } from "lucide-react";
 
-import { formatDate, formatPrice } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { requireAdmin } from "@/lib/admin/guard";
 import { listCustomers, normalisePage } from "@/lib/admin/queries";
 import {
@@ -14,6 +14,7 @@ import {
   Th,
   Tr,
 } from "@/components/admin/primitives";
+import { Money } from "@/components/admin/admin-currency";
 import { StaffRoleControl } from "@/components/admin/staff-role-control";
 import { ListToolbar } from "@/components/admin/toolbar";
 import { Pagination } from "@/components/admin/pagination";
@@ -25,7 +26,7 @@ export default async function AdminCustomersPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const identity = await requireAdmin();
+  const identity = await requireAdmin("customers");
 
   const params = await searchParams;
   const read = (key: string) => {
@@ -75,7 +76,7 @@ export default async function AdminCustomersPage({
         />
         <StatCard
           label="Spend on this page"
-          value={formatPrice(pageSpend)}
+          value={<Money amount={pageSpend} />}
           hint="Excludes cancelled and refunded"
           icon={Wallet}
         />
@@ -180,7 +181,7 @@ export default async function AdminCustomersPage({
 
                     <Td align="right" className="admin-figure font-semibold">
                       {person.lifetime_value > 0
-                        ? formatPrice(person.lifetime_value)
+                        ? <Money amount={person.lifetime_value} />
                         : "—"}
                     </Td>
 

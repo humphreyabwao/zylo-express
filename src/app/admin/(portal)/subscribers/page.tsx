@@ -40,7 +40,7 @@ export default async function AdminSubscribersPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
+  await requireAdmin("subscribers");
 
   const params = await searchParams;
   const read = (key: string) => {
@@ -74,9 +74,8 @@ export default async function AdminSubscribersPage({
     <>
       <PageHeader
         title="Subscribers"
-        description="The mailing list. Unsubscribing keeps the record so a later signup cannot undo it."
       >
-        <RealtimeRefresh channel="subscribers" label="the list" />
+        <RealtimeRefresh channel="subscribers" />
         <SubscriberExportButton />
       </PageHeader>
 
@@ -91,7 +90,6 @@ export default async function AdminSubscribersPage({
           label="Subscribed"
           value={String(counts.subscribed)}
           tone="positive"
-          hint="Would receive the next send"
           icon={Mail}
           href="/admin/subscribers?status=subscribed"
         />
@@ -99,7 +97,6 @@ export default async function AdminSubscribersPage({
           label="Unconfirmed"
           value={String(counts.unconfirmed)}
           tone={counts.unconfirmed > 0 ? "warning" : "neutral"}
-          hint="No double opt-in is wired yet"
           icon={BadgeCheck}
           href="/admin/subscribers?status=unconfirmed"
         />
@@ -151,7 +148,7 @@ export default async function AdminSubscribersPage({
             description={
               filtered
                 ? "Nothing matches these filters. Try widening them."
-                : "Signups from the footer form land here. The list is admin-only — it is never readable from the storefront, so it cannot be scraped."
+                : "Signups from the footer form arrive here."
             }
           />
         ) : (

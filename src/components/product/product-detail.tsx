@@ -10,7 +10,8 @@ import { availableValuesFor, defaultVariant, findVariant } from "@/lib/variants"
 import { flagLabel } from "@/lib/filters";
 import { useCartStore } from "@/store/cart-store";
 import { useUiStore } from "@/store/ui-store";
-import { cn, formatPrice } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { useCurrency } from "@/components/commerce/currency-provider";
 import { Button } from "@/components/ui/button";
 import {
   Accordion,
@@ -26,6 +27,7 @@ import { WishlistButton } from "@/components/commerce/wishlist-button";
 import { ProductGallery } from "@/components/product/product-gallery";
 
 export function ProductDetail({ product }: { product: Product }) {
+  const { format, freeShippingThreshold } = useCurrency();
   const addLine = useCartStore((s) => s.addLine);
   const openCart = useUiStore((s) => s.openCart);
 
@@ -122,10 +124,11 @@ export function ProductDetail({ product }: { product: Product }) {
         </p>
 
         <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3">
+          {/* No `currency` prop: that escape hatch is for money already
+              recorded. A catalogue price converts to the shopper's currency. */}
           <Price
             amount={variant?.price ?? product.price}
             compareAt={variant?.compareAtPrice ?? product.compareAtPrice}
-            currency={product.currency}
             size="lg"
             showDiscount
           />
@@ -292,7 +295,7 @@ export function ProductDetail({ product }: { product: Product }) {
           <p className="flex items-center gap-2.5 pt-1 text-sm font-light text-muted-foreground">
             <Truck className="size-4 shrink-0" strokeWidth={1.25} />
             Complimentary insured delivery on orders above{" "}
-            {formatPrice(50000)}
+            {format(freeShippingThreshold)}
           </p>
         </div>
 

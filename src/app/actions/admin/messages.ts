@@ -35,7 +35,7 @@ const STATUSES = ["new", "in-progress", "resolved"] as const;
 
 async function authorise(): Promise<ActionResult | null> {
   try {
-    await requireAdminAction();
+    await requireAdminAction({ module: "messages" });
     return null;
   } catch (error) {
     if (error instanceof AdminAuthorizationError) {

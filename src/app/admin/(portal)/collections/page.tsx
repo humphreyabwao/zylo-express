@@ -28,7 +28,7 @@ export default async function AdminCollectionsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
+  await requireAdmin("collections");
 
   const params = await searchParams;
   const read = (key: string) => {
@@ -53,9 +53,8 @@ export default async function AdminCollectionsPage({
     <>
       <PageHeader
         title="Collections"
-        description="Editorial groupings. A product can sit in as many as it earns."
       >
-        <RealtimeRefresh channel="collections" label="collections" />
+        <RealtimeRefresh channel="collections" />
         <CollectionCreateButton>
           <Plus className="size-4" strokeWidth={2.2} />
           New collection
@@ -102,7 +101,7 @@ export default async function AdminCollectionsPage({
             description={
               filtered
                 ? "Nothing matches these filters. Try widening them."
-                : "A collection groups products into an edit — a season, a theme, a story. Create the first one to get started."
+                : "Create the first collection."
             }
             action={
               !filtered && (

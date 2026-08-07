@@ -62,7 +62,7 @@ async function revalidatePages(
 
 async function authorise(): Promise<ActionResult | null> {
   try {
-    await requireAdminAction();
+    await requireAdminAction({ module: "pages" });
     return null;
   } catch (error) {
     if (error instanceof AdminAuthorizationError) {

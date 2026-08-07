@@ -20,7 +20,7 @@ export default async function AdminMessagesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
+  await requireAdmin("messages");
 
   const params = await searchParams;
   const read = (key: string) => {
@@ -50,9 +50,8 @@ export default async function AdminMessagesPage({
     <>
       <PageHeader
         title="Messages"
-        description="Enquiries from the contact form. Replies go out through your own mail client."
       >
-        <RealtimeRefresh channel="messages" label="the inbox" />
+        <RealtimeRefresh channel="messages" />
       </PageHeader>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -116,7 +115,7 @@ export default async function AdminMessagesPage({
             description={
               filtered
                 ? "Nothing matches these filters. Try widening them."
-                : "Messages sent through the contact form at /help/contact land here. Nobody but staff can read them back — the table is write-only to the public."
+                : "Enquiries from /help/contact arrive here."
             }
           />
         ) : (

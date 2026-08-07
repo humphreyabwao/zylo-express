@@ -39,7 +39,7 @@ function revalidateList() {
 
 async function authorise(): Promise<ActionResult | null> {
   try {
-    await requireAdminAction();
+    await requireAdminAction({ module: "subscribers" });
     return null;
   } catch (error) {
     if (error instanceof AdminAuthorizationError) {
