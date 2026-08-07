@@ -56,25 +56,16 @@ export const env = {
 
   /* ------------------------------------------------------------ payments */
 
-  /**
-   * Paystack secret key (`sk_test_…` / `sk_live_…`).
+  /*
+   * Paystack is no longer read from here.
    *
-   * The matching *public* key is deliberately absent from this file and from
-   * the app. It only exists to authenticate Paystack's browser-side Inline
-   * popup, and we do not use Inline: transactions are initialised server-side
-   * and the customer is redirected to Paystack's hosted page. That keeps card
-   * entry off this origin entirely — no PAN, no PCI scope, no key to inline.
+   * Its keys and settlement currency are resolved by
+   * `src/lib/payments/credentials.ts`, which reads the `payment_credentials`
+   * table first and falls back to `PAYSTACK_SECRET_KEY` / `PAYSTACK_CURRENCY`
+   * only when nothing has been saved in the portal. Getters on this object
+   * would answer from the environment alone and therefore contradict what
+   * checkout actually uses, so they are deliberately absent.
    */
-  get paystackSecretKey() {
-    return required("PAYSTACK_SECRET_KEY");
-  },
-  /**
-   * Currency Paystack settles in — the one your Paystack account is registered
-   * for. M-Pesa exists only on Kenyan accounts, so KES is the default.
-   */
-  get paystackCurrency() {
-    return (optional("PAYSTACK_CURRENCY") ?? "KES").toUpperCase();
-  },
 
   get paypalClientId() {
     return required("PAYPAL_CLIENT_ID");
@@ -97,15 +88,17 @@ export const env = {
   },
 } as const;
 
-export function isPaystackConfigured(): boolean {
-  return Boolean(process.env.PAYSTACK_SECRET_KEY);
-}
-
-export function isPaypalConfigured(): boolean {
-  return Boolean(
-    process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET
-  );
-}
+/*
+ * `isPaystackConfigured()` and `isPaypalConfigured()` used to live here and
+ * have been removed rather than left unused.
+ *
+ * Both answered "is there an environment variable", which stopped being the
+ * question once the portal could store keys: an operator who configures
+ * Paystack in Settings has a configured provider and an empty environment, and
+ * either helper would have said no. Use `isProviderLive()` from
+ * payments/credentials.ts, which consults both sources and also honours the
+ * operator's on/off switch.
+ */
 
 /**
  * Whether Supabase is wired up. The catalogue falls back to the local seed

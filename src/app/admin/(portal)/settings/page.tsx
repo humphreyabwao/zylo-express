@@ -1,7 +1,9 @@
 import { requireAdmin } from "@/lib/admin/guard";
 import { getStoreSettings } from "@/lib/settings";
+import { getMaskedCredentials } from "@/lib/payments/credentials";
 import { PageHeader } from "@/components/admin/primitives";
 import { RealtimeRefresh } from "@/components/admin/realtime-refresh";
+import { PaystackSettingsForm } from "@/components/admin/payment-settings";
 import {
   CurrencyPreview,
   CurrencySettingsForm,
@@ -12,7 +14,15 @@ export const metadata = { title: "Settings" };
 
 export default async function AdminSettingsPage() {
   const identity = await requireAdmin("settings");
-  const settings = await getStoreSettings();
+
+  // `getMaskedCredentials` is the only shape of this data allowed across the
+  // boundary into a Client Component — hints, never keys. Passing the resolved
+  // credentials instead would put a live secret key in the RSC payload, which
+  // is sent to the browser.
+  const [settings, paystack] = await Promise.all([
+    getStoreSettings(),
+    getMaskedCredentials("paystack"),
+  ]);
 
   return (
     <>
@@ -43,7 +53,13 @@ export default async function AdminSettingsPage() {
           />
         </div>
 
-        <CurrencyPreview config={settings.currency} />
+        <div className="space-y-6">
+          <CurrencyPreview config={settings.currency} />
+          <PaystackSettingsForm
+            credentials={paystack}
+            canEdit={identity.unrestricted}
+          />
+        </div>
       </div>
     </>
   );

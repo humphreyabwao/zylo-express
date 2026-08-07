@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-import { env } from "@/lib/env";
+import { getCredentials } from "@/lib/payments/credentials";
 
 /**
  * Paystack adapter — cards and M-Pesa.
@@ -43,17 +43,36 @@ export class PaystackError extends Error {
   }
 }
 
+/**
+ * The key in force, from Settings if an operator has saved one and from the
+ * environment otherwise. Resolved per call rather than captured at module load
+ * so that switching sandbox → production in the portal takes effect on the
+ * next request instead of the next deploy.
+ */
+async function secretKey(): Promise<string> {
+  const credentials = await getCredentials("paystack");
+
+  if (!credentials) {
+    throw new PaystackError(
+      "Paystack is not configured. Add a secret key in Settings → Payments."
+    );
+  }
+
+  return credentials.secretKey;
+}
+
 async function request<T>(
   path: string,
   init: { method: "GET" | "POST"; body?: unknown }
 ): Promise<T> {
+  const key = await secretKey();
   let response: Response;
 
   try {
     response = await fetch(`${API}${path}`, {
       method: init.method,
       headers: {
-        Authorization: `Bearer ${env.paystackSecretKey}`,
+        Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
       },
       body: init.body ? JSON.stringify(init.body) : undefined,
@@ -87,6 +106,49 @@ async function request<T>(
   }
 
   return envelope.data;
+}
+
+/* ------------------------------------------------------------ key check */
+
+export interface AccountCheck {
+  /** Account name as Paystack has it, when the key is good. */
+  businessName: string;
+  /** Currencies the account can settle — what `settlement_currency` must be. */
+  currencies: string[];
+}
+
+/**
+ * Prove a key works, before a customer finds out it doesn't.
+ *
+ * `/balance` is the cheapest authenticated call Paystack offers: it moves no
+ * money, needs no prior transaction, and fails loudly on a bad key. It also
+ * answers the question behind most misconfigurations — the balance is returned
+ * per currency, so an account that cannot settle KES says so here rather than
+ * at the first checkout.
+ */
+export async function checkAccount(): Promise<AccountCheck> {
+  const balances = await request<{ currency: string; balance: number }[]>(
+    "/balance",
+    { method: "GET" }
+  );
+
+  // Paystack's integration name lives on a separate endpoint; a failure there
+  // should not turn a working key into a red cross, so it is best-effort.
+  let businessName = "Paystack account";
+  try {
+    const integration = await request<{ business_name?: string }>(
+      "/integration",
+      { method: "GET" }
+    );
+    if (integration?.business_name) businessName = integration.business_name;
+  } catch {
+    // Keep the default.
+  }
+
+  return {
+    businessName,
+    currencies: balances.map((entry) => entry.currency.toUpperCase()),
+  };
 }
 
 /* ------------------------------------------------------------------ cards */
@@ -259,13 +321,21 @@ export async function verifyTransaction(
  * key. The body must be the exact bytes received — re-serialising parsed JSON
  * reorders keys and changes whitespace, and the digest will never match.
  */
-export function verifyWebhookSignature(
+export async function verifyWebhookSignature(
   rawBody: string,
   signature: string | null
-): boolean {
+): Promise<boolean> {
   if (!signature) return false;
 
-  const expected = createHmac("sha512", env.paystackSecretKey)
+  let key: string;
+  try {
+    key = await secretKey();
+  } catch {
+    // Unconfigured means nothing can be authenticated, so nothing is trusted.
+    return false;
+  }
+
+  const expected = createHmac("sha512", key)
     .update(rawBody, "utf8")
     .digest("hex");
 

@@ -14,19 +14,19 @@ export const metadata: Metadata = {
 /**
  * Rendered per request.
  *
- * Which payment methods exist is read from the environment, and a prerender
- * would bake in whatever was set at *build* time. Adding a provider's
- * credentials afterwards would then change nothing until the next deploy — the
- * checkout would keep offering the old list, or none at all. Nothing here is
- * CDN-cacheable anyway: it is a per-customer, noindex page.
+ * Which payment methods exist is a live setting — an operator can add Paystack
+ * keys or switch a provider off in Settings, and the next checkout must see
+ * it. A prerender would bake in whatever was configured at *build* time and
+ * keep offering a button that fails. Nothing here is CDN-cacheable anyway: it
+ * is a per-customer, noindex page.
  */
 export const dynamic = "force-dynamic";
 
-export default function CheckoutPage() {
+export default async function CheckoutPage() {
   // Which methods to offer is a server fact — it depends on which provider
   // credentials exist. Deciding it in the browser would mean shipping a list
   // of configured providers to everyone, and offering a button that fails.
-  const methods = availablePaymentMethods();
+  const methods = await availablePaymentMethods();
 
   return (
     <section className="container-shell py-12 lg:py-16">

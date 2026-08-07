@@ -84,7 +84,17 @@ export function PaymentMethods({
       name="paymentMethod"
       render={({ field }) => (
         <FormItem>
-          <div className="grid gap-3 sm:grid-cols-3">
+          {/* Column count follows what is actually offered. A shop running
+              Paystack alone offers two methods, and a fixed three-column grid
+              would leave a hole where PayPal would have been. */}
+          <div
+            className={cn(
+              "grid gap-3",
+              offered.length === 1 && "sm:grid-cols-1",
+              offered.length === 2 && "sm:grid-cols-2",
+              offered.length >= 3 && "sm:grid-cols-3"
+            )}
+          >
             {offered.map((method) => {
               const active = field.value === method.id;
               const Icon = method.icon;
