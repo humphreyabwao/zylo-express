@@ -95,7 +95,12 @@ export function ProductDetail({ product }: { product: Product }) {
     variant?.available && variant.inventoryQuantity > 0 && variant.inventoryQuantity <= 3;
 
   return (
-    <div className="container-shell grid gap-x-12 gap-y-10 py-8 lg:grid-cols-2 lg:gap-x-20 lg:py-12 xl:gap-x-28">
+    // `[&>*]:min-w-0` is a guard, not decoration. A grid item's min-width
+    // defaults to auto, which floors it at min-content — so one child that
+    // cannot shrink silently widens the whole column and every sibling with
+    // it, and the page overflows somewhere far from the actual cause. This
+    // keeps a future wide child contained to itself.
+    <div className="container-shell grid gap-x-12 gap-y-10 py-8 [&>*]:min-w-0 lg:grid-cols-2 lg:gap-x-20 lg:py-12 xl:gap-x-28">
       <div className="lg:-mx-0">
         <ProductGallery
           images={product.images}
@@ -242,7 +247,16 @@ export function ProductDetail({ product }: { product: Product }) {
             </p>
           )}
 
-          <div className="flex items-stretch gap-3">
+          {/* Wraps on a phone: stepper and wishlist share the first line, and
+              "Add to bag" takes a full-width line of its own beneath them.
+
+              Unwrapped, this row cannot fit a 320px screen. The stepper is
+              128px and does not shrink, the wishlist box 48px, and the `lg`
+              button carries px-12 with nowrap text — about 391px of demand
+              against 296px of column. Because grid items floor at min-content,
+              that width propagated up and set the width of the whole product
+              column, pushing the heading and copy off the right edge. */}
+          <div className="flex flex-wrap items-stretch gap-3">
             <QuantityStepper
               value={quantity}
               onChange={setQuantity}
@@ -255,7 +269,10 @@ export function ProductDetail({ product }: { product: Product }) {
               onClick={handleAdd}
               disabled={soldOut || adding}
               size="lg"
-              className="h-12 flex-1"
+              // Full width and last on a phone; back beside the stepper as soon
+              // as there is room. px-12 is a desktop measure — at mobile the
+              // button is already full-bleed and does not need it.
+              className="order-last h-12 w-full px-6 sm:order-none sm:w-auto sm:flex-1 sm:px-12"
             >
               {soldOut ? (
                 "Sold out"

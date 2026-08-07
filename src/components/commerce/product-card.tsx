@@ -149,9 +149,17 @@ export function ProductCard({
             </p>
           )}
 
-          {/* Tight gap first: at two cards per row on a 320px screen the price
-              and a full set of swatches do not both fit at gap-4. */}
-          <div className="mt-auto flex items-center justify-between gap-2 pt-2.5 sm:gap-4">
+          {/* Wraps rather than squeezes.
+
+              This card is single-column on a phone in the grid but two-up in
+              the wishlist, which leaves roughly 134px at 320px wide. A price
+              in a weak currency is long — "Ksh 1,154,422" alone renders at
+              94px — and with a full set of swatches beside it the row needs
+              about 160px. `justify-between` on a nowrap row cannot resolve
+              that and the swatches spill past the card. Letting the row wrap
+              drops them onto a second line instead, so nothing is truncated
+              and no price is ever half-visible. */}
+          <div className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 pt-2.5 sm:gap-x-4">
             <Price
               amount={product.price}
               compareAt={product.compareAtPrice}
@@ -160,7 +168,7 @@ export function ProductCard({
 
             {colors.length > 1 && (
               <span
-                className="flex items-center gap-1.5"
+                className="flex shrink-0 items-center gap-1.5"
                 aria-label={`${colors.length} colours available`}
               >
                 {colors.slice(0, 4).map((color) => (

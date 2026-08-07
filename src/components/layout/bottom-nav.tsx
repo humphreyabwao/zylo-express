@@ -122,7 +122,13 @@ export function BottomNav() {
         // Overflow stays visible — the Shop disc breaks the top edge.
         className="fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-background/92 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden"
       >
-        <ul className="grid grid-cols-5">
+        {/* `min-w-0` on the items is load-bearing. A grid item defaults to
+            `min-width: auto`, which floors it at min-content — and the widest
+            label ("Account", uppercase and letter-spaced) is wider than the
+            64px a fifth of a 320px screen allows. The five tabs then refused
+            to shrink, pushed the bar to 405px, and every page inherited a
+            horizontal scrollbar from the nav sitting on top of it. */}
+        <ul className="grid grid-cols-5 [&>li]:min-w-0">
           {TABS.map((tab) => {
             const active = tab.href === activeHref;
             const count = tab.counter ? counts[tab.counter] : 0;
@@ -191,7 +197,7 @@ export function BottomNav() {
                         painted over by it whatever the DOM order. */}
                     <span
                       className={cn(
-                        "eyebrow-sm relative transition-colors duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                        "tab-label relative transition-colors duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]",
                         active
                           ? "text-foreground"
                           : "text-muted-foreground group-hover:text-champagne-dark group-focus-visible:text-champagne-dark"
@@ -260,7 +266,7 @@ export function BottomNav() {
                     )}
                   </span>
 
-                  <span className="eyebrow-sm relative">{tab.label}</span>
+                  <span className="tab-label relative">{tab.label}</span>
                 </Link>
               </li>
             );

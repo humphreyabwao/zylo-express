@@ -59,7 +59,17 @@ export function Price({
   } as const;
 
   return (
-    <span className={cn("inline-flex items-baseline gap-2.5", className)}>
+    // Wraps. On sale this is three items on one line — the price, the struck
+    // original and the discount badge — and in a weak currency each of those
+    // is long ("Ksh 1,154,422"). In the wishlist's two-up grid a card is about
+    // 142px at 320px wide, which a nowrap row overruns by roughly 30px. The
+    // baseline alignment survives wrapping; the overflow does not.
+    <span
+      className={cn(
+        "inline-flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5",
+        className
+      )}
+    >
       <span
         className={cn(
           "font-sans font-semibold tracking-tight tabular-nums",

@@ -542,6 +542,40 @@
   line-height: 1.4;
 }
 
+/*
+ * Bottom-bar tab label.
+ *
+ * `eyebrow-sm` with its 0.24em tracking sets "Account" at roughly 81px, and a
+ * fifth of a 320px screen is 64px. The five tabs could not shrink to fit, so
+ * the bar measured 405px and — being fixed and full-bleed — gave every page on
+ * the site a horizontal scrollbar. This is the same eyebrow, tracked and sized
+ * to the space actually available, opening back up once there is room for it.
+ *
+ * `truncate` is a backstop rather than the mechanism: a translated label or a
+ * larger accessibility text size should clip, not reintroduce the overflow.
+ */
+@utility tab-label {
+  font-family: var(--font-sans);
+  font-size: 0.5625rem;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.4;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  @media (width >= 22.5rem) {
+    font-size: 0.625rem;
+    letter-spacing: 0.12em;
+  }
+
+  @media (width >= 26rem) {
+    letter-spacing: 0.18em;
+  }
+}
+
 /* Link whose rule draws in from the left on hover */
 @utility link-draw {
   position: relative;

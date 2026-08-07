@@ -26,7 +26,10 @@ export function AuthShell({
   children,
 }: AuthShellProps) {
   return (
-    <section className="grid min-h-[calc(100svh-4rem)] lg:grid-cols-2">
+    // `[&>*]:min-w-0` for the same reason as the product page: a grid item
+    // floors at min-content, so anything inside the form that cannot shrink
+    // sets the width of the panel and overflows the screen.
+    <section className="grid min-h-[calc(100svh-4rem)] [&>*]:min-w-0 lg:grid-cols-2">
       {/* Campaign panel */}
       <div className="relative hidden overflow-hidden bg-obsidian lg:block">
         <Image
