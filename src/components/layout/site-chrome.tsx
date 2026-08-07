@@ -33,10 +33,13 @@ const BARE_ROUTES = ["/admin"];
 export function SiteChrome({
   children,
   categories,
+  announcements,
 }: {
   children: React.ReactNode;
   /** Server-fetched in the root layout; forwarded to the search overlay. */
   categories: { slug: string; name: string }[];
+  /** From `site_settings`, so the bar is editable without a deploy. */
+  announcements: string[];
 }) {
   const pathname = usePathname();
   const minimal = MINIMAL_ROUTES.some((route) => pathname.startsWith(route));
@@ -57,7 +60,7 @@ export function SiteChrome({
         <CheckoutHeader />
       ) : (
         <>
-          <AnnouncementBar />
+          <AnnouncementBar announcements={announcements} />
           <Header />
         </>
       )}

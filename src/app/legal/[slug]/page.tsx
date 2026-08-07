@@ -1,22 +1,23 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { LEGAL_PAGES } from "@/data/content";
+import { getContentPage, getContentPages } from "@/lib/content";
 import { ContentPage } from "@/components/content/content-page";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-export function generateStaticParams() {
-  return LEGAL_PAGES.map((page) => ({ slug: page.slug }));
+export async function generateStaticParams() {
+  const pages = await getContentPages("legal");
+  return pages.map((page) => ({ slug: page.slug }));
 }
 
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const page = LEGAL_PAGES.find((p) => p.slug === slug);
+  const page = await getContentPage("legal", slug);
   if (!page) return { title: "Not found" };
 
   return {
@@ -28,7 +29,12 @@ export async function generateMetadata({
 
 export default async function LegalPage({ params }: PageProps) {
   const { slug } = await params;
-  const page = LEGAL_PAGES.find((p) => p.slug === slug);
+  // One cache entry serves both — `getContentPage` filters the same list.
+  const [page, siblings] = await Promise.all([
+    getContentPage("legal", slug),
+    getContentPages("legal"),
+  ]);
+
   if (!page) notFound();
 
   return (
@@ -39,7 +45,7 @@ export default async function LegalPage({ params }: PageProps) {
         { label: "Legal" },
         { label: page.title },
       ]}
-      siblings={LEGAL_PAGES.map((p) => ({
+      siblings={siblings.map((p) => ({
         label: p.title,
         href: `/legal/${p.slug}`,
       }))}

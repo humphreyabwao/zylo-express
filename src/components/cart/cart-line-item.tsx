@@ -6,7 +6,8 @@ import { X } from "lucide-react";
 
 import type { CartLine } from "@/lib/types";
 import { useCartStore } from "@/store/cart-store";
-import { cn, formatPrice } from "@/lib/utils";
+import {cn} from "@/lib/utils";
+import { useCurrency } from "@/components/commerce/currency-provider";
 import { QuantityStepper } from "@/components/commerce/quantity-stepper";
 
 interface CartLineItemProps {
@@ -21,6 +22,7 @@ export function CartLineItem({
   onNavigate,
   variant = "compact",
 }: CartLineItemProps) {
+  const { format } = useCurrency();
   const setQuantity = useCartStore((s) => s.setQuantity);
   const removeLine = useCartStore((s) => s.removeLine);
 
@@ -103,7 +105,7 @@ export function CartLineItem({
           <div className="text-right">
             {compareTotal && compareTotal > lineTotal && (
               <p className="text-xs font-normal text-muted-foreground line-through">
-                {formatPrice(compareTotal, { currency: line.currency })}
+                {format(compareTotal)}
               </p>
             )}
             <p
@@ -112,7 +114,7 @@ export function CartLineItem({
                 compareTotal && compareTotal > lineTotal && "text-destructive"
               )}
             >
-              {formatPrice(lineTotal, { currency: line.currency })}
+              {format(lineTotal)}
             </p>
           </div>
         </div>

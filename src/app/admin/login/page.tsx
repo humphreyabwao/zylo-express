@@ -3,7 +3,6 @@ import Link from "next/link";
 import { ArrowLeft, Lock } from "lucide-react";
 
 import { montserrat } from "@/lib/fonts";
-import { isPreviewMode } from "@/lib/admin/guard";
 import { AdminLoginForm } from "@/components/admin/login-form";
 
 /**
@@ -67,19 +66,6 @@ export default function AdminLoginPage() {
           </div>
 
           <AdminLoginForm />
-
-          {isPreviewMode() && (
-            <p className="mt-6 rounded-lg border border-champagne/40 bg-champagne/10 px-4 py-3 text-center text-[0.75rem] leading-relaxed text-admin-muted">
-              <span className="font-semibold">ADMIN_PREVIEW is on.</span>{" "}
-              <Link href="/admin" className="font-semibold underline">
-                The portal
-              </Link>{" "}
-              is reachable without signing in, and writes will still be refused
-              by row-level security because the preview identity is not a real
-              session. Sign in above to work for real, then drop the flag from{" "}
-              <span className="admin-figure">.env.local</span>.
-            </p>
-          )}
         </div>
       </main>
 

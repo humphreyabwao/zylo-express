@@ -11,6 +11,7 @@ import {
 } from "@/lib/admin/guard";
 import { CacheTags, invalidateTags } from "@/lib/cache";
 import { MEDIA_BUCKET, createUploadUrl, deleteMedia } from "@/lib/storage";
+import { refusalMessage } from "@/lib/admin/errors";
 
 /**
  * Product imagery.
@@ -213,7 +214,7 @@ export async function attachProductImage(input: unknown): Promise<MediaResult> {
 
   if (error) {
     console.error("[admin] image attach failed:", error);
-    return { ok: false, message: "The upload finished but could not be saved." };
+    return { ok: false, message: refusalMessage(error, "The upload finished but could not be saved.") };
   }
 
   await revalidateProduct(product.slug);
@@ -253,7 +254,7 @@ export async function updateImageAlt(input: unknown): Promise<MediaResult> {
 
   if (error || !data) {
     console.error("[admin] alt update failed:", error);
-    return { ok: false, message: "Could not save that description." };
+    return { ok: false, message: refusalMessage(error, "Could not save that description.") };
   }
 
   const { data: product } = await supabase
@@ -303,7 +304,7 @@ export async function deleteProductImage(imageId: string): Promise<MediaResult> 
 
   if (error) {
     console.error("[admin] image delete failed:", error);
-    return { ok: false, message: "The database refused that delete." };
+    return { ok: false, message: refusalMessage(error, "The database refused that delete.") };
   }
 
   // Seeded imagery lives under /public/media and is referenced by an absolute
@@ -385,4 +386,302 @@ export async function reorderProductImages(input: unknown): Promise<MediaResult>
 
   await revalidateProduct(product?.slug);
   return { ok: true, message: "Order saved." };
+}
+
+/* -------------------------------------------------------------------------- */
+/*                              media library                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The library is bucket-first.
+ *
+ * Everything above is *product* imagery: an upload that exists to become a
+ * `product_images` row. The operations below work on the bucket itself, where
+ * an object may have no row at all — a campaign plate, an editorial still, or
+ * the residue of an upload whose attach step failed.
+ *
+ * That distinction is the whole reason the library is worth having. A file
+ * nothing references is invisible everywhere else in the portal, costs storage
+ * forever, and is indistinguishable from a file that is load-bearing until
+ * something joins the two together.
+ */
+
+/** Prefixes the library is allowed to write to and delete from. */
+const LIBRARY_PREFIXES = ["products", "collections", "campaign", "editorial"] as const;
+
+/**
+ * Anchors any caller-supplied path to a known prefix and a safe filename.
+ *
+ * The same reasoning as `attachSchema` above, generalised: a path is the one
+ * input here that decides *what gets destroyed*, so it is validated against a
+ * fixed shape rather than sanitised. No `..`, no leading slash, no nesting —
+ * one of four prefixes and a flat filename.
+ */
+const libraryPathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(300)
+  .regex(
+    new RegExp(`^(${LIBRARY_PREFIXES.join("|")})/[A-Za-z0-9._-]+$`),
+    "Unrecognised media path."
+  );
+
+/* ------------------------------------------------------------ library upload */
+
+const libraryUploadSchema = z.object({
+  prefix: z.enum(LIBRARY_PREFIXES, {
+    errorMap: () => ({ message: "Unknown media folder." }),
+  }),
+  filename: z
+    .string()
+    .trim()
+    .min(1, "The file needs a name.")
+    .max(120, "That filename is too long."),
+  contentType: z.enum(ALLOWED_TYPES, {
+    errorMap: () => ({ message: "Use a JPEG, PNG, WebP or AVIF image." }),
+  }),
+  size: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_BYTES, "Images must be 10MB or smaller."),
+});
+
+/**
+ * Mint an upload URL for a file that is not (yet) attached to anything.
+ *
+ * The filename is used only as a *stem* — it is slugified and given a random
+ * suffix, so the server still decides the final path. Keeping a recognisable
+ * stem matters here in a way it does not for product uploads: an operator
+ * browsing a bucket of `a3f9c2.jpg` cannot find anything.
+ */
+export async function createLibraryUpload(input: {
+  prefix: string;
+  filename: string;
+  contentType: string;
+  size: number;
+}): Promise<UploadTicket> {
+  const denied = await authorise();
+  if (denied) return denied;
+
+  const parsed = libraryUploadSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0]!.message };
+  }
+
+  const extension = EXTENSION[parsed.data.contentType] ?? "jpg";
+
+  const stem =
+    parsed.data.filename
+      .replace(/\.[^.]+$/, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "image";
+
+  const path = `${parsed.data.prefix}/${stem}-${randomBytes(4).toString("hex")}.${extension}`;
+
+  const ticket = await createUploadUrl(MEDIA_BUCKET, path);
+  if (!ticket) {
+    return { ok: false, message: "Could not start the upload. Try again." };
+  }
+
+  return {
+    ok: true,
+    message: "Ready to upload.",
+    uploadUrl: ticket.signedUrl,
+    token: ticket.token,
+    path: ticket.path,
+    bucket: MEDIA_BUCKET,
+  };
+}
+
+/** Called once the bytes have landed, so the library reflects them at once. */
+export async function finaliseLibraryUpload(path: string): Promise<MediaResult> {
+  const denied = await authorise();
+  if (denied) return denied;
+
+  const parsed = libraryPathSchema.safeParse(path);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]!.message };
+
+  revalidatePath("/admin/media");
+  return { ok: true, message: "Upload complete." };
+}
+
+/* ------------------------------------------------------------ library delete */
+
+/**
+ * Delete an object from the bucket.
+ *
+ * Refuses while a `product_images` row still points at it. This is the mirror
+ * of `deleteProductImage`, which removes the row and then the object: here
+ * there is no row to remove, so deleting anyway would leave one behind
+ * pointing at nothing — a broken image on a live product page, which is the
+ * exact failure the ordering in `deleteProductImage` exists to avoid.
+ *
+ * Detaching is a product-level decision, so the refusal names the product
+ * rather than offering to cascade.
+ */
+export async function deleteLibraryAsset(path: string): Promise<MediaResult> {
+  const denied = await authorise();
+  if (denied) return denied;
+
+  const parsed = libraryPathSchema.safeParse(path);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]!.message };
+
+  const supabase = await createOperatorClient();
+
+  const { data: attached, error: lookupError } = await supabase
+    .from("product_images")
+    .select("id, products(name)")
+    .eq("storage_path", parsed.data)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error("[admin] media usage check failed:", lookupError);
+    return { ok: false, message: refusalMessage(lookupError, "Could not check what uses that file.") };
+  }
+
+  if (attached) {
+    const owner =
+      (attached as unknown as { products: { name: string } | null }).products?.name ??
+      "a product";
+    return {
+      ok: false,
+      message: `That file is still in use by ${owner}. Remove it from the product first.`,
+    };
+  }
+
+  const removed = await deleteMedia([parsed.data]);
+  if (!removed) {
+    return { ok: false, message: "Storage refused that delete." };
+  }
+
+  revalidatePath("/admin/media");
+  return { ok: true, message: "File deleted." };
+}
+
+/**
+ * Delete every unreferenced object in one pass.
+ *
+ * Sweeping orphans one click at a time is how they stop being swept. The paths
+ * are re-checked against `product_images` here rather than trusted from the
+ * client, because the list the operator saw may be seconds old and an image
+ * attached in between must not be deleted on the strength of a stale screen.
+ */
+export async function deleteOrphanedAssets(paths: string[]): Promise<MediaResult> {
+  const denied = await authorise();
+  if (denied) return denied;
+
+  const parsed = z.array(libraryPathSchema).min(1).max(100).safeParse(paths);
+  if (!parsed.success) {
+    return { ok: false, message: "That selection was not valid." };
+  }
+
+  const supabase = await createOperatorClient();
+
+  const { data: attached, error } = await supabase
+    .from("product_images")
+    .select("storage_path")
+    .in("storage_path", parsed.data);
+
+  if (error) {
+    console.error("[admin] orphan sweep check failed:", error);
+    return { ok: false, message: refusalMessage(error, "Could not check what is still in use.") };
+  }
+
+  const inUse = new Set((attached ?? []).map((row) => row.storage_path));
+  const removable = parsed.data.filter((path) => !inUse.has(path));
+
+  if (removable.length === 0) {
+    return { ok: false, message: "Every one of those files is still in use." };
+  }
+
+  const removed = await deleteMedia(removable);
+  if (!removed) return { ok: false, message: "Storage refused that delete." };
+
+  revalidatePath("/admin/media");
+
+  const skipped = parsed.data.length - removable.length;
+  return {
+    ok: true,
+    message:
+      skipped > 0
+        ? `Deleted ${removable.length}. Skipped ${skipped} still in use.`
+        : `Deleted ${removable.length} unused ${removable.length === 1 ? "file" : "files"}.`,
+  };
+}
+
+/* ------------------------------------------------------------ library attach */
+
+const libraryAttachSchema = z.object({
+  productId: z.string().uuid("That is not a valid product id."),
+  path: libraryPathSchema,
+  alt: z.string().trim().max(200),
+});
+
+/**
+ * Attach an existing bucket object to a product.
+ *
+ * This is what turns an orphan back into imagery, and it is the reason the
+ * library is more than a delete button: a campaign plate uploaded for one
+ * purpose is frequently the right photograph for a product page, and
+ * re-uploading it to get a second copy is how a bucket doubles in size.
+ *
+ * Dimensions are not measured here — there is no browser in the loop. The
+ * schema defaults on `product_images` (1200×1500) apply, and the operator can
+ * correct them from the product's own image manager if the aspect is wrong.
+ */
+export async function attachLibraryAsset(input: unknown): Promise<MediaResult> {
+  const denied = await authorise();
+  if (denied) return denied;
+
+  const parsed = libraryAttachSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0]!.message };
+  }
+
+  const supabase = await createOperatorClient();
+
+  const { data: product } = await supabase
+    .from("products")
+    .select("slug")
+    .eq("id", parsed.data.productId)
+    .maybeSingle();
+
+  if (!product) return { ok: false, message: "That product no longer exists." };
+
+  const { data: existing } = await supabase
+    .from("product_images")
+    .select("id")
+    .eq("storage_path", parsed.data.path)
+    .maybeSingle();
+
+  if (existing) {
+    return { ok: false, message: "That file is already attached to a product." };
+  }
+
+  const { data: last } = await supabase
+    .from("product_images")
+    .select("position")
+    .eq("product_id", parsed.data.productId)
+    .order("position", { ascending: false })
+    .limit(1);
+
+  const { error } = await supabase.from("product_images").insert({
+    product_id: parsed.data.productId,
+    storage_path: parsed.data.path,
+    alt: parsed.data.alt,
+    position: (last?.[0]?.position ?? -1) + 1,
+  });
+
+  if (error) {
+    console.error("[admin] library attach failed:", error);
+    return { ok: false, message: refusalMessage(error, "Could not attach that file.") };
+  }
+
+  await revalidateProduct(product.slug);
+  revalidatePath("/admin/media");
+  return { ok: true, message: "Attached to product." };
 }

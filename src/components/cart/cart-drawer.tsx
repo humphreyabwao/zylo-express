@@ -6,7 +6,8 @@ import { ShoppingBag } from "lucide-react";
 import { useCartStore } from "@/store/cart-store";
 import { useIsCartOpen, useUiStore } from "@/store/ui-store";
 import { computeSubtotal } from "@/lib/pricing";
-import { formatPrice, pluralize } from "@/lib/utils";
+import {pluralize} from "@/lib/utils";
+import { useCurrency } from "@/components/commerce/currency-provider";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -19,6 +20,7 @@ import { CartLineItem } from "@/components/cart/cart-line-item";
 import { FreeShippingMeter } from "@/components/cart/free-shipping-meter";
 
 export function CartDrawer() {
+  const { format } = useCurrency();
   const open = useIsCartOpen();
   const closeOverlay = useUiStore((s) => s.closeOverlay);
 
@@ -85,7 +87,7 @@ export function CartDrawer() {
                   Subtotal
                 </span>
                 <span className="text-2xl font-semibold tabular-nums">
-                  {formatPrice(subtotal)}
+                  {format(subtotal)}
                 </span>
               </div>
 

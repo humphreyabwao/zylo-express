@@ -28,7 +28,7 @@ const SERVICES = [
       "Video appointments in English, French and Japanese",
     ],
     image: "/media/editorial/the-atelier.jpg",
-    cta: { href: "/help/contact", label: "Request an appointment" },
+    cta: { href: "/services/appointments", label: "Request an appointment" },
   },
   {
     id: "monogramming",

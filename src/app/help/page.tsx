@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
-import { HELP_PAGES } from "@/data/content";
+import { getContentPages } from "@/lib/content";
 import {
   Accordion,
   AccordionContent,
@@ -47,7 +47,9 @@ const FAQS = [
   },
 ];
 
-export default function HelpIndexPage() {
+export default async function HelpIndexPage() {
+  const helpPages = await getContentPages("help");
+
   return (
     <>
       <section className="container-shell pb-12 pt-12 lg:pt-16">
@@ -67,7 +69,7 @@ export default function HelpIndexPage() {
       <section className="container-shell pb-16">
         <ul className="grid gap-px border border-hairline bg-hairline sm:grid-cols-2 lg:grid-cols-3">
           {[
-            ...HELP_PAGES.map((p) => ({
+            ...helpPages.map((p) => ({
               title: p.title,
               summary: p.summary,
               href: `/help/${p.slug}`,

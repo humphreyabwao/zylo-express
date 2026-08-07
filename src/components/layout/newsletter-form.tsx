@@ -7,6 +7,7 @@ import { ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 
 import { newsletterSchema, type NewsletterValues } from "@/lib/validation";
+import { subscribeToNewsletter } from "@/app/actions/newsletter";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,11 +24,18 @@ interface NewsletterFormProps {
   className?: string;
   /** `inverse` is used on dark ground — footer and campaign panels. */
   tone?: "default" | "inverse";
+  /**
+   * Where this instance sits. Stored against the subscriber so the admin list
+   * can tell a footer signup from a campaign one — the two convert very
+   * differently, and a single undifferentiated list cannot show that.
+   */
+  source?: "footer" | "campaign" | "checkout" | "account";
 }
 
 export function NewsletterForm({
   className,
   tone = "default",
+  source = "footer",
 }: NewsletterFormProps) {
   const [subscribed, setSubscribed] = React.useState(false);
 
@@ -37,10 +45,29 @@ export function NewsletterForm({
     mode: "onBlur",
   });
 
-  // Wired to a Supabase Edge Function in the backend phase; the optimistic
-  // acknowledgement below is what the shopper sees either way.
+  /**
+   * Writes to `newsletter_subscribers`, where the admin list reads it.
+   *
+   * This used to `await` a 650ms timeout and declare success — the address was
+   * never sent anywhere, and "Welcome to the maison" was untrue every time.
+   *
+   * A resubscribe is reported as success rather than as a conflict; see the
+   * action for why that is deliberate and not just forgiving.
+   */
   const onSubmit = async (values: NewsletterValues) => {
-    await new Promise((resolve) => setTimeout(resolve, 650));
+    const result = await subscribeToNewsletter({ ...values, source });
+
+    if (!result.ok) {
+      if (result.fieldErrors) {
+        for (const [field, message] of Object.entries(result.fieldErrors)) {
+          form.setError(field as keyof NewsletterValues, { message });
+        }
+      } else {
+        toast.error(result.message);
+      }
+      return;
+    }
+
     setSubscribed(true);
     toast("Welcome to the maison", {
       description: `We will write to ${values.email} before each collection.`,

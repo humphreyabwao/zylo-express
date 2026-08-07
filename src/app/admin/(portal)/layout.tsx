@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 
 import { montserrat } from "@/lib/fonts";
-import { requireAdmin, isPreviewMode } from "@/lib/admin/guard";
+import { requireAdmin } from "@/lib/admin/guard";
 import { getNotifications } from "@/lib/admin/queries";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { ADMIN_RAIL_COOKIE } from "@/components/admin/sidebar";
@@ -46,37 +46,17 @@ export default async function AdminLayout({
 
   return (
     <div className={`${montserrat.variable} contents`}>
-      {isPreviewMode() && <PreviewBanner />}
-
       <AdminShell
         operator={{
           name,
           email: identity.profile.email,
           role: identity.profile.role,
-          isPreview: identity.isPreview,
         }}
         notifications={notifications}
         defaultCollapsed={collapsed}
       >
         {children}
       </AdminShell>
-    </div>
-  );
-}
-
-/**
- * Deliberately loud and un-dismissable.
- *
- * The portal is currently reachable without signing in. That is a development
- * convenience, and the one failure mode worth designing against is somebody
- * forgetting it is on. It cannot render in a production build — `isPreviewMode`
- * is compiled out — so this banner is also the honest signal that the build you
- * are looking at is not one.
- */
-function PreviewBanner() {
-  return (
-    <div className="sticky top-0 z-[60] flex items-center justify-center gap-2 bg-champagne px-4 py-1.5 text-center font-admin text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-obsidian">
-      Preview mode — authentication bypassed. Development builds only.
     </div>
   );
 }

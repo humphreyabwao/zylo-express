@@ -1,7 +1,7 @@
 import { Receipt, TriangleAlert, Users, Wallet } from "lucide-react";
 
 import { formatDate, formatPrice } from "@/lib/utils";
-import { isPreviewMode, requireAdmin } from "@/lib/admin/guard";
+import { requireAdmin } from "@/lib/admin/guard";
 import { listCustomers, normalisePage } from "@/lib/admin/queries";
 import {
   Badge,
@@ -59,22 +59,6 @@ export default async function AdminCustomersPage({
         `auth.uid()` is null and the policy matches nothing. An empty table
         with no explanation reads as a broken query.
       */}
-      {isPreviewMode() && identity.isPreview && (
-        <p className="mb-4 flex items-start gap-2.5 rounded-lg border border-champagne/40 bg-champagne/10 px-4 py-3 text-[0.75rem] leading-relaxed text-admin-muted">
-          <TriangleAlert
-            className="mt-px size-3.5 shrink-0 text-champagne-dark"
-            strokeWidth={2}
-          />
-          <span>
-            <span className="font-semibold">
-              This list is empty in preview mode, whatever the database holds.
-            </span>{" "}
-            Accounts are readable only by their owner or an administrator, and
-            the preview identity is not a real session. Sign in as an
-            administrator to see them.
-          </span>
-        </p>
-      )}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard

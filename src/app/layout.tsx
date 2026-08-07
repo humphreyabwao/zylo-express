@@ -1,7 +1,11 @@
 import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
 
 import { cormorant, jost } from "@/lib/fonts";
 import { getCategories } from "@/lib/catalog";
+import { getStoreSettingsWithLiveRates } from "@/lib/settings";
+import { resolveCurrency, CURRENCY_COOKIE } from "@/lib/currency";
+import { CurrencyProvider } from "@/components/commerce/currency-provider";
 import { absoluteUrl } from "@/lib/utils";
 import { Providers } from "@/components/providers";
 import { SiteChrome } from "@/components/layout/site-chrome";
@@ -123,15 +127,38 @@ export default async function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   // Fetched here so the search overlay and mobile nav can render category
   // links without importing the catalogue into the client bundle.
-  const categories = (await getCategories()).map(({ slug, name }) => ({
-    slug,
-    name,
-  }));
+  const [categoryRows, settings, cookieStore] = await Promise.all([
+    getCategories(),
+    getStoreSettingsWithLiveRates(),
+    cookies(),
+  ]);
+
+  const categories = categoryRows.map(({ slug, name }) => ({ slug, name }));
+
+  /**
+   * Resolved on the server so the first paint is already in the right
+   * currency. Doing it on the client would mean every price flashing from the
+   * base currency to the shopper's after hydration.
+   *
+   * `resolveCurrency` re-checks the cookie against the enabled list and the
+   * rates, so a currency the operator has since removed stops being served to
+   * whoever had already chosen it.
+   */
+  const currency = resolveCurrency(
+    cookieStore.get(CURRENCY_COOKIE)?.value,
+    settings.currency
+  );
 
   return (
     <html
       lang="en"
       suppressHydrationWarning
+      // globals.css sets `scroll-behavior: smooth` on <html> for in-page anchor
+      // links. Without this attribute Next can't tell that apart from an
+      // accident, and route transitions animate a scroll to the top instead of
+      // jumping — so a new page appears to start mid-scroll. Declaring it lets
+      // Next suppress smooth scrolling for navigations while anchors keep it.
+      data-scroll-behavior="smooth"
       className={`${cormorant.variable} ${jost.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
@@ -141,7 +168,18 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd) }}
         />
         <Providers>
-          <SiteChrome categories={categories}>{children}</SiteChrome>
+          <CurrencyProvider
+            initialCurrency={currency}
+            config={settings.currency}
+            freeShippingThreshold={settings.freeShippingThreshold}
+          >
+            <SiteChrome
+              categories={categories}
+              announcements={settings.announcements}
+            >
+              {children}
+            </SiteChrome>
+          </CurrencyProvider>
         </Providers>
       </body>
     </html>

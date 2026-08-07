@@ -261,6 +261,95 @@ export type ArticleRow = {
   author: string;
   is_published: boolean;
   published_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * One section of a content page's body.
+ *
+ * Stored as `jsonb` rather than as a child table: a page's sections are only
+ * ever read and written whole, never queried across, so a table would buy
+ * nothing but a join. Mirrors `ContentSection` in `src/data/content.ts`, which
+ * is the fallback these rows replace.
+ */
+export type ContentSection = {
+  heading: string;
+  body: string[];
+  facts?: { term: string; detail: string }[];
+}
+
+export type ContentPageRow = {
+  id: string;
+  slug: string;
+  /** Namespaces the slug: 'legal', 'help', 'about', 'services'. */
+  section: string;
+  title: string;
+  eyebrow: string;
+  subtitle: string;
+  body: ContentSection[];
+  seo_title: string | null;
+  seo_description: string | null;
+  is_published: boolean;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ContactMessageRow = {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  order_reference: string | null;
+  status: MessageStatusDb;
+  created_at: string;
+}
+
+export type AppointmentStatusDb =
+  | "requested"
+  | "confirmed"
+  | "completed"
+  | "cancelled";
+
+export type AppointmentModeDb = "in-person" | "video";
+
+export type AppointmentRow = {
+  id: string;
+  /** ZY-APT-000000, assigned by trigger. Never supplied by a caller. */
+  reference: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  mode: AppointmentModeDb;
+  /** Null for video appointments — enforced by a check constraint. */
+  boutique: string | null;
+  /** What the customer asked for. Never overwritten by a reschedule. */
+  preferred_at: string;
+  alternate_at: string | null;
+  /** What staff agreed to, if anything yet. */
+  confirmed_at: string | null;
+  party_size: number;
+  interest: string;
+  /** The customer's own note. */
+  notes: string;
+  status: AppointmentStatusDb;
+  /** Staff-only, never shown to the customer. */
+  staff_note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type NewsletterSubscriberRow = {
+  id: string;
+  email: string;
+  /** Where the signup came from: 'footer', 'campaign', … */
+  source: string;
+  is_confirmed: boolean;
+  /** Set rather than deleting the row, so a resubscribe is distinguishable. */
+  unsubscribed_at: string | null;
+  created_at: string;
 }
 
 export type PromotionRow = {
@@ -355,25 +444,34 @@ export type Database = {
       }>;
       promotions: Table<PromotionRow>;
       articles: Table<ArticleRow>;
+      // Was missing entirely, which is why nothing could read or write it —
+      // `from("content_pages")` did not typecheck, so the CMS table sat unused
+      // while /help and /legal served hard-coded copy from src/data/content.ts.
+      content_pages: Table<ContentPageRow>;
       site_settings: Table<SiteSettingRow>;
-      newsletter_subscribers: Table<{
-        id: string;
-        email: string;
-        source: string;
-        is_confirmed: boolean;
-      }>;
-      contact_messages: Table<{
-        id: string;
-        name: string;
-        email: string;
-        subject: string;
-        message: string;
-        order_reference: string | null;
-        status: MessageStatusDb;
-      }>;
+      // Was declared with four of its six columns, so `unsubscribed_at` and
+      // `created_at` were invisible to every query — which is most of why the
+      // subscriber list could not have been built against it.
+      newsletter_subscribers: Table<NewsletterSubscriberRow>;
+      contact_messages: Table<ContactMessageRow>;
+      // `reference` is assigned by a trigger, so an insert must be allowed to
+      // omit it — `Table`'s Insert defaults to Partial<Row>, which covers that.
+      appointments: Table<AppointmentRow>;
     };
     Views: Record<string, never>;
     Functions: {
+      /**
+       * Insert-or-reactivate a newsletter address.
+       *
+       * `SECURITY DEFINER`, because an anonymous upsert is refused — the
+       * insert policy grants INSERT but not the UPDATE that `ON CONFLICT DO
+       * UPDATE` needs. Returns void so it cannot be used to probe whether an
+       * address is already on the list. See migration 12.
+       */
+      subscribe_to_newsletter: {
+        Args: { p_email: string; p_source?: string };
+        Returns: void;
+      };
       search_products: {
         Args: { p_query: string; p_limit?: number };
         Returns: ProductRow[];
@@ -433,6 +531,8 @@ export type Database = {
       shipping_speed: ShippingSpeedDb;
       promotion_kind: PromotionKindDb;
       message_status: MessageStatusDb;
+      appointment_status: AppointmentStatusDb;
+      appointment_mode: AppointmentModeDb;
     };
     CompositeTypes: Record<string, never>;
   };

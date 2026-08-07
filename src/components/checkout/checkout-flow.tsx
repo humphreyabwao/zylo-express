@@ -16,7 +16,8 @@ import {
   type CheckoutValues,
   type PaymentMethodValue,
 } from "@/lib/validation";
-import { cn, formatPrice } from "@/lib/utils";
+import {cn} from "@/lib/utils";
+import { useCurrency } from "@/components/commerce/currency-provider";
 import {
   cancelCheckout,
   pollCheckoutStatus,
@@ -103,6 +104,7 @@ export function CheckoutFlow({
 }: {
   availableMethods: PaymentMethodValue[];
 }) {
+  const { format } = useCurrency();
   const router = useRouter();
   const searchParams = useSearchParams();
   const lines = useCartStore((s) => s.lines);
@@ -482,7 +484,7 @@ export function CheckoutFlow({
                               <span className="font-display text-sm font-light tabular-nums">
                                 {method.price === 0 || free
                                   ? "Complimentary"
-                                  : formatPrice(method.price)}
+                                  : format(method.price)}
                               </span>
                             </span>
                             <span className="mt-1.5 block text-sm font-light text-muted-foreground">
@@ -610,7 +612,7 @@ export function CheckoutFlow({
             >
               {busy
                 ? "Contacting your bank…"
-                : `Pay ${formatPrice(totals.total, { currency: totals.currency })}`}
+                : `Pay ${format(totals.total)}`}
             </Button>
 
             <p className="mt-5 text-xs font-light leading-relaxed text-muted-foreground">

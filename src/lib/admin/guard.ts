@@ -40,45 +40,8 @@ export class AdminAuthorizationError extends Error {
   }
 }
 
-/**
- * Whether the unlinked-login preview is active.
- *
- * The dashboard is being built before its sign-in flow is wired up, so there
- * has to be some way to see it. That way must not be able to exist in
- * production, hence two conditions rather than one: the flag AND a
- * non-production build. `NODE_ENV` is inlined at build time by Next, so a
- * production bundle cannot be talked into this at runtime by setting an
- * environment variable on the host — the branch is compiled out.
- *
- * Remove `ADMIN_PREVIEW` from `.env.local` the moment the login page is linked.
- */
-export function isPreviewMode(): boolean {
-  return (
-    process.env.NODE_ENV !== "production" && process.env.ADMIN_PREVIEW === "1"
-  );
-}
-
-/**
- * The synthetic operator used while previewing.
- *
- * Given an obviously fake id and address so it can never be mistaken for a real
- * account in a screenshot, a log line, or an audit trail.
- */
-const PREVIEW_PROFILE: ProfileRow = {
-  id: "00000000-0000-0000-0000-000000000000",
-  email: "preview@zylo.local",
-  first_name: "Preview",
-  last_name: "Operator",
-  phone: null,
-  role: "admin",
-  marketing_opt_in: false,
-  created_at: new Date(0).toISOString(),
-};
-
 export interface AdminIdentity {
   profile: ProfileRow;
-  /** True when this session came from the preview bypass, not a real sign-in. */
-  isPreview: boolean;
   /** Whether this identity may perform destructive operations. */
   canElevate: boolean;
 }
@@ -91,25 +54,11 @@ export interface AdminIdentity {
  * is not.
  */
 export async function getAdminIdentity(): Promise<AdminIdentity | null> {
-  if (isPreviewMode()) {
-    return {
-      profile: PREVIEW_PROFILE,
-      isPreview: true,
-      // Destructive operations stay available in preview so the flows can be
-      // exercised, but every caller can see which identity performed them.
-      canElevate: true,
-    };
-  }
-
   const profile = await getCurrentProfile();
   if (!profile) return null;
   if (!PORTAL_ROLES.includes(profile.role)) return null;
 
-  return {
-    profile,
-    isPreview: false,
-    canElevate: ELEVATED_ROLES.includes(profile.role),
-  };
+  return { profile, canElevate: ELEVATED_ROLES.includes(profile.role) };
 }
 
 /**

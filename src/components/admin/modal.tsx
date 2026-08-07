@@ -2,8 +2,10 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { Loader2, TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { AdminButton } from "@/components/admin/primitives";
 
 /**
  * Portal dialog and form primitives.
@@ -212,4 +214,77 @@ export function Toggle({
 /** Minor units → the decimal string a person types. */
 export function toAmountField(minor: number | null): string {
   return minor === null ? "" : (minor / 100).toFixed(2);
+}
+
+/* ------------------------------------------------------------ confirmation */
+
+/**
+ * Destructive confirmation.
+ *
+ * `product-actions.tsx` uses type-to-confirm for deleting a product, which is
+ * the right weight for the one operation in the portal that destroys imagery,
+ * options and variants together. Most deletes are not that: a category with no
+ * products, or a collection whose members survive it, are recoverable by
+ * recreating a row with the same fields.
+ *
+ * So this is the lighter of the two, and the choice between them is a real
+ * one — making every delete type-to-confirm is how operators learn to copy the
+ * name without reading the sentence above it.
+ *
+ * Stays open when `onConfirm` resolves false, so a refusal is read next to the
+ * thing it is refusing rather than as a toast over an empty screen.
+ */
+export function ConfirmDialog({
+  title,
+  confirmLabel = "Delete",
+  busyLabel = "Deleting…",
+  onClose,
+  onConfirm,
+  children,
+}: {
+  title: string;
+  confirmLabel?: string;
+  busyLabel?: string;
+  onClose: () => void;
+  onConfirm: () => Promise<boolean>;
+  /** The consequence, in a sentence. */
+  children: React.ReactNode;
+}) {
+  const [working, setWorking] = React.useState(false);
+
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div className="px-6 py-5">
+        <div className="flex gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+          <TriangleAlert
+            className="mt-0.5 size-4 shrink-0 text-destructive"
+            strokeWidth={2}
+          />
+          <div className="text-[0.8125rem] leading-relaxed text-admin-fg">
+            {children}
+          </div>
+        </div>
+      </div>
+
+      <ModalFooter>
+        <AdminButton variant="secondary" onClick={onClose} disabled={working}>
+          Cancel
+        </AdminButton>
+
+        <AdminButton
+          variant="danger"
+          disabled={working}
+          onClick={async () => {
+            setWorking(true);
+            const ok = await onConfirm();
+            setWorking(false);
+            if (ok) onClose();
+          }}
+        >
+          {working && <Loader2 className="size-3.5 animate-spin" strokeWidth={2} />}
+          {working ? busyLabel : confirmLabel}
+        </AdminButton>
+      </ModalFooter>
+    </Modal>
+  );
 }

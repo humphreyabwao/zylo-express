@@ -1,10 +1,7 @@
 import "server-only";
 
-import {
-  FREE_SHIPPING_THRESHOLD,
-  SHIPPING_METHODS,
-  TAX_RATE,
-} from "@/data/commerce";
+import { SHIPPING_METHODS, TAX_RATE } from "@/data/commerce";
+import { getStoreSettings } from "@/lib/settings";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { storageUrl } from "@/lib/storage";
@@ -289,9 +286,22 @@ export async function createPendingOrder(
     SHIPPING_METHODS.find((m) => m.id === input.shippingMethod) ??
     SHIPPING_METHODS[0];
 
+  /**
+   * Read from settings, not from the constant.
+   *
+   * This is the authoritative total — the one a customer is charged — so it
+   * has to use the threshold an operator actually set. The cart's meter is an
+   * optimistic preview and may briefly disagree after a change; this cannot.
+   *
+   * Compared in base minor units against a subtotal in base minor units, so
+   * the threshold is the same order value whichever currency the shopper was
+   * browsing in.
+   */
+  const { freeShippingThreshold } = await getStoreSettings();
+
   const shipping =
     freeShipping ||
-    (method.id === "standard" && discounted >= FREE_SHIPPING_THRESHOLD)
+    (method.id === "standard" && discounted >= freeShippingThreshold)
       ? 0
       : method.price;
 
