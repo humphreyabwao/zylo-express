@@ -31,8 +31,15 @@ export function AccountNav() {
   return (
     <nav aria-label="Account">
       {/* Scrollable row on mobile, stacked rail from lg. Icons earn their
-          place on narrow screens where labels get cramped. */}
-      <ul className="no-scrollbar -mx-5 flex gap-1 overflow-x-auto px-5 lg:mx-0 lg:flex-col lg:gap-0.5 lg:px-0">
+          place on narrow screens where labels get cramped.
+
+          The negative margin has to equal `container-shell`'s padding at the
+          same breakpoint, or the row does not line up with the content under
+          it. It was a flat -mx-5 (20px) against a container that pads 12px on
+          a phone, 24px from sm and 40px from md — so the tabs sat 8px left of
+          everything below them and bled 8px off the screen. Matching the three
+          steps is what squares the left and right edges. */}
+      <ul className="no-scrollbar -mx-3 flex gap-1 overflow-x-auto px-3 sm:-mx-6 sm:px-6 md:-mx-10 md:px-10 lg:mx-0 lg:flex-col lg:gap-0.5 lg:px-0">
         {LINKS.map((link) => {
           const active =
             link.href === "/account"

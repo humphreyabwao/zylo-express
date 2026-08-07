@@ -72,9 +72,16 @@ export default async function AccountLayout({
       </section>
 
       <section className="container-shell py-10 lg:py-14">
-        <div className="grid gap-x-12 gap-y-8 lg:grid-cols-[14rem_1fr] xl:gap-x-16">
+        {/* `[&>*]:min-w-0` on both items, not just the panel.
+
+            A grid item floors at min-content, and the nav's row of tabs is
+            about 700px laid end to end. The content column already carried
+            min-w-0, but the nav did not — so the shared track sized to the
+            tabs, the panel stretched to match, and every account screen ran
+            two-and-a-bit viewports wide on a phone. */}
+        <div className="grid gap-x-12 gap-y-8 [&>*]:min-w-0 lg:grid-cols-[14rem_1fr] xl:gap-x-16">
           <AccountNav />
-          <div className="min-w-0">{children}</div>
+          <div>{children}</div>
         </div>
       </section>
     </>

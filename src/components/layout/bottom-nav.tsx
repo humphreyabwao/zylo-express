@@ -17,18 +17,12 @@ interface Tab {
   icon: typeof Home;
   /** Which store supplies this tab's badge, if any. */
   counter?: Counter;
-  /** Renders as the raised centre disc instead of a flat icon + label. */
-  featured?: boolean;
 }
 
-/**
- * Order matters: the featured tab has to land dead centre, so this list is
- * odd-numbered and Shop sits at index 2.
- */
 const TABS: Tab[] = [
   { href: "/", label: "Home", icon: Home },
+  { href: "/shop", label: "Shop", icon: Store },
   { href: "/cart", label: "Bag", icon: ShoppingBag, counter: "cart" },
-  { href: "/shop", label: "Shop", icon: Store, featured: true },
   {
     href: "/account/wishlist",
     label: "Saved",
@@ -43,29 +37,7 @@ const TABS: Tab[] = [
  * match it exactly — content that scrolls under a fixed bar and never clears
  * it is the classic way this pattern goes wrong.
  */
-const BAR_HEIGHT = "4rem";
-
-/** The icon box a flat tab reserves. The Shop tab reserves the same one. */
-const ICON_BOX = "1.15rem";
-
-/** The Shop disc, and the halo it is cut into the bar with. */
-const DISC_SIZE = "3.5rem";
-const HALO_SIZE = "4.25rem";
-
-/**
- * How far the halo rises above the bar's top edge.
- *
- * Bounded below by the Shop label. A flat tab centres an 18.4px icon, a 6px
- * gap and a 14px label in the 64px row, which puts every label's top edge
- * 37.2px below the bar's. The halo is opaque, so it has to clear that line:
- * at 2rem it ends 1px above the label and the disc inside it — inset 6px —
- * ends 7px above, which is air rather than gold behind the word "Shop".
- *
- * The spacer uses this rather than the disc's own rise because the halo is
- * the taller of the two; sizing to the disc would leave the page scrolling
- * under the halo's top edge.
- */
-const HALO_RISE = "2rem";
+const BAR_HEIGHT = "3.25rem";
 
 /**
  * The tab whose route the shopper is actually on.
@@ -87,6 +59,20 @@ function useActiveHref() {
   }, [pathname]);
 }
 
+/**
+ * Mobile primary navigation.
+ *
+ * Five equal tabs, flat, one height, identical on every page.
+ *
+ * It previously raised the Shop tab onto a gold disc that broke the top edge
+ * of the bar, with a blurred halo cut around it and a champagne pill that
+ * bloomed under the pointer. That is a loud, contemporary pattern — a floating
+ * action button in evening dress — and it made the bar read as tall and busy
+ * rather than quiet. A house bar should be furniture: present, unremarkable,
+ * the same everywhere. So the disc, the halo and the bloom are gone, the row
+ * is 52px instead of 64 plus a 32px bump, and the only mark of the current tab
+ * is a hairline above it and the label in full contrast.
+ */
 export function BottomNav() {
   const activeHref = useActiveHref();
 
@@ -106,12 +92,12 @@ export function BottomNav() {
 
   return (
     <>
-      {/* Clears the last of the page from under the fixed bar and its bump. */}
+      {/* Clears the last of the page from under the fixed bar. */}
       <div
         aria-hidden
         className="lg:hidden"
         style={{
-          height: `calc(${BAR_HEIGHT} + ${HALO_RISE} + env(safe-area-inset-bottom))`,
+          height: `calc(${BAR_HEIGHT} + env(safe-area-inset-bottom))`,
         }}
       />
 
@@ -119,96 +105,19 @@ export function BottomNav() {
         aria-label="Primary"
         // Edge to edge, flush to the bottom, with the iOS home indicator
         // accounted for. Below overlays (z-50) so drawers still cover it.
-        // Overflow stays visible — the Shop disc breaks the top edge.
         className="fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-background/92 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden"
       >
         {/* `min-w-0` on the items is load-bearing. A grid item defaults to
-            `min-width: auto`, which floors it at min-content — and the widest
-            label ("Account", uppercase and letter-spaced) is wider than the
-            64px a fifth of a 320px screen allows. The five tabs then refused
-            to shrink, pushed the bar to 405px, and every page inherited a
-            horizontal scrollbar from the nav sitting on top of it. */}
+            `min-width: auto`, which floors it at min-content — and a
+            letter-spaced "Account" is wider than the 64px a fifth of a 320px
+            screen allows. Without this the five tabs refuse to shrink, the bar
+            measures 405px, and every page inherits a horizontal overflow from
+            the nav sitting on top of it. */}
         <ul className="grid grid-cols-5 [&>li]:min-w-0">
           {TABS.map((tab) => {
             const active = tab.href === activeHref;
             const count = tab.counter ? counts[tab.counter] : 0;
             const Icon = tab.icon;
-
-            if (tab.featured) {
-              return (
-                <li key={tab.href} className="relative">
-                  <Link
-                    href={tab.href}
-                    aria-current={active ? "page" : undefined}
-                    // Same centring as a flat tab, so the Shop label lands on
-                    // the same baseline as the other four rather than being
-                    // pushed down by the disc.
-                    className="group flex flex-col items-center justify-center gap-1.5 outline-none"
-                    style={{ height: BAR_HEIGHT }}
-                  >
-                    {/* Reserves the box a flat tab gives its icon. The disc is
-                        drawn around this point but takes no space in flow. */}
-                    <span
-                      aria-hidden
-                      className="shrink-0"
-                      style={{ width: ICON_BOX, height: ICON_BOX }}
-                    />
-
-                    {/* Halo cut out of the bar, so the disc reads as a notch
-                        rather than a sticker sitting on top of it. */}
-                    <span
-                      aria-hidden
-                      className="absolute left-1/2 grid -translate-x-1/2 place-items-center rounded-full bg-background/92 backdrop-blur-md"
-                      style={{
-                        top: `calc(-1 * ${HALO_RISE})`,
-                        width: HALO_SIZE,
-                        height: HALO_SIZE,
-                      }}
-                    >
-                      {/* Soft champagne bloom that swells on hover. */}
-                      <span
-                        className={cn(
-                          "absolute size-full rounded-full bg-champagne/25 blur-md transition-all duration-600 ease-[cubic-bezier(0.16,1,0.3,1)]",
-                          active
-                            ? "scale-110 opacity-90"
-                            : "scale-75 opacity-0 group-hover:scale-110 group-hover:opacity-100 group-focus-visible:scale-110 group-focus-visible:opacity-100"
-                        )}
-                      />
-
-                      <span
-                        className={cn(
-                          "relative grid place-items-center rounded-full text-obsidian",
-                          "bg-gradient-to-br from-champagne-light via-champagne to-champagne-dark",
-                          "shadow-lg shadow-champagne/35 ring-1 ring-champagne-dark/30",
-                          "transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
-                          "group-hover:-translate-y-0.5 group-hover:shadow-champagne/60",
-                          "group-hover:from-champagne group-hover:via-champagne-light group-hover:to-champagne",
-                          "group-focus-visible:ring-2 group-focus-visible:ring-foreground",
-                          "group-active:scale-95 group-active:shadow-md"
-                        )}
-                        style={{ width: DISC_SIZE, height: DISC_SIZE }}
-                      >
-                        <Icon className="size-6" strokeWidth={1.5} />
-                      </span>
-                    </span>
-
-                    {/* `relative` for the same reason the flat tabs use it: the
-                        halo is positioned, and a static sibling would be
-                        painted over by it whatever the DOM order. */}
-                    <span
-                      className={cn(
-                        "tab-label relative transition-colors duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]",
-                        active
-                          ? "text-foreground"
-                          : "text-muted-foreground group-hover:text-champagne-dark group-focus-visible:text-champagne-dark"
-                      )}
-                    >
-                      {tab.label}
-                    </span>
-                  </Link>
-                </li>
-              );
-            }
 
             return (
               <li key={tab.href}>
@@ -217,56 +126,40 @@ export function BottomNav() {
                   aria-current={active ? "page" : undefined}
                   aria-label={count > 0 ? `${tab.label}, ${count}` : undefined}
                   className={cn(
-                    "group relative flex flex-col items-center justify-center gap-1.5 outline-none",
+                    "group relative flex flex-col items-center justify-center gap-1 px-1 outline-none",
                     "transition-colors duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]",
                     active
                       ? "text-foreground"
-                      : "text-muted-foreground hover:text-champagne-dark focus-visible:text-champagne-dark"
+                      : "text-muted-foreground hover:text-foreground focus-visible:text-foreground"
                   )}
                   style={{ height: BAR_HEIGHT }}
                 >
                   {/* Hairline on the top edge, drawn the way the header
-                      underlines its active nav item. */}
+                      underlines its active nav item. The whole of the active
+                      state, along with the label's contrast. */}
                   <span
                     aria-hidden
                     className={cn(
-                      "absolute inset-x-0 top-0 h-px bg-champagne transition-transform duration-600 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                      "absolute inset-x-0 top-0 h-px origin-center bg-foreground transition-transform duration-600 ease-[cubic-bezier(0.16,1,0.3,1)]",
                       active ? "scale-x-100" : "scale-x-0"
                     )}
                   />
 
-                  {/* Champagne pill that blooms under the pointer. */}
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "pointer-events-none absolute inset-x-2.5 inset-y-1.5 rounded-full",
-                      "bg-gradient-to-b from-champagne/22 to-champagne/6 ring-1 ring-champagne/20",
-                      "scale-90 opacity-0 transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]",
-                      "group-hover:scale-100 group-hover:opacity-100",
-                      "group-focus-visible:scale-100 group-focus-visible:opacity-100"
-                    )}
-                  />
-
-                  <span
-                    className="relative shrink-0 transition-transform duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-y-0.5 group-active:scale-90"
-                    style={{ width: ICON_BOX, height: ICON_BOX }}
-                  >
-                    <Icon className="size-full" strokeWidth={1.25} />
+                  <span className="relative shrink-0">
+                    <Icon className="size-[1.0625rem]" strokeWidth={1.25} />
 
                     {count > 0 && (
+                      // A dot, not a numeral. At this size a two-digit count in
+                      // a red circle is the loudest thing on the screen, and
+                      // the exact number is on the page the tab leads to.
                       <span
-                        className={cn(
-                          "absolute -right-2.5 -top-1.5 grid min-w-[1.05rem] place-items-center rounded-full",
-                          "bg-[#d12d2d] px-1 text-[0.5625rem] font-semibold leading-[1.05rem] text-white",
-                          "ring-2 ring-background"
-                        )}
-                      >
-                        {count > 99 ? "99+" : count}
-                      </span>
+                        aria-hidden
+                        className="absolute -right-1 -top-0.5 size-1.5 rounded-full bg-champagne-dark ring-2 ring-background"
+                      />
                     )}
                   </span>
 
-                  <span className="tab-label relative">{tab.label}</span>
+                  <span className="tab-label">{tab.label}</span>
                 </Link>
               </li>
             );

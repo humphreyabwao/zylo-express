@@ -10,6 +10,7 @@ import { useCartStore } from "@/store/cart-store";
 import { useUiStore } from "@/store/ui-store";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/logo";
+import { CurrencySwitcher } from "@/components/commerce/currency-switcher";
 import { MegaMenu } from "@/components/layout/mega-menu";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 
@@ -132,15 +133,28 @@ export function Header() {
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1">
+          {/* The announcement bar carries the currency switcher from md up and
+              hides it below, which left a phone with no way to change currency
+              at all. This is the same control on the other side of that
+              breakpoint, so exactly one is visible at any width. */}
+          <CurrencySwitcher className="mr-1 md:hidden" />
+
           {/* Desktop only: below lg the hamburger drawer carries it instead,
               so the two never both appear. */}
           <ThemeToggle className="hidden lg:grid" />
 
+          {/* size-9 on a phone, size-10 from sm.
+
+              With the currency switcher now in this row, four 40px boxes plus
+              the logo and the drawer button came to more than a 320px screen
+              has, and the bag button — which is pulled 10px right for optical
+              alignment — ended up past the edge. 36px boxes give the row the
+              width it needs and read as tidier besides. */}
           <button
             type="button"
             onClick={openSearch}
             aria-label="Search"
-            className="grid size-10 place-items-center transition-opacity duration-400 hover:opacity-60"
+            className="grid size-9 place-items-center transition-opacity duration-400 hover:opacity-60 sm:size-10"
           >
             <Search className="size-[1.05rem]" strokeWidth={1.25} />
           </button>
@@ -156,7 +170,7 @@ export function Header() {
           <Link
             href="/account"
             aria-label="Account"
-            className="grid size-10 place-items-center transition-opacity duration-400 hover:opacity-60"
+            className="grid size-9 place-items-center transition-opacity duration-400 hover:opacity-60 sm:size-10"
           >
             <User className="size-[1.05rem]" strokeWidth={1.25} />
           </Link>
@@ -165,7 +179,7 @@ export function Header() {
             type="button"
             onClick={openCart}
             aria-label={`Shopping bag, ${itemCount} ${itemCount === 1 ? "item" : "items"}`}
-            className="relative -mr-2.5 grid size-10 place-items-center transition-opacity duration-400 hover:opacity-60"
+            className="relative -mr-1.5 grid size-9 place-items-center transition-opacity duration-400 hover:opacity-60 sm:-mr-2.5 sm:size-10"
           >
             <ShoppingBag className="size-[1.05rem]" strokeWidth={1.25} />
             {itemCount > 0 && (
