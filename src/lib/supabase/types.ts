@@ -218,7 +218,12 @@ export type OrderItemRow = {
 
 export type PaymentRow = {
   id: string;
-  order_id: string;
+  /**
+   * Exactly one of these is set — see the `payments_belongs_to_one` check.
+   * `order_id` for a website order, `sale_id` for a counter sale.
+   */
+  order_id: string | null;
+  sale_id: string | null;
   provider: PaymentProviderDb;
   method: PaymentMethodDb;
   status: PaymentStatusDb;

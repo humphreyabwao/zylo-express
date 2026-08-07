@@ -6,13 +6,20 @@ import { listPosItems } from "@/lib/admin/queries";
 import { EmptyState, PageHeader, Panel } from "@/components/admin/primitives";
 import { RealtimeRefresh } from "@/components/admin/realtime-refresh";
 import { PosTerminal } from "@/components/admin/pos-terminal";
+import { isProviderLive } from "@/lib/payments/credentials";
 
 export const metadata = { title: "Point of sale" };
 
 export default async function AdminPosPage() {
   await requireAdmin("pos");
 
-  const items = await listPosItems();
+  // Whether card and M-Pesa actually charge, or are only labels on a sale
+  // settled some other way. A server fact — it depends on stored credentials,
+  // which never reach the browser.
+  const [items, paystackReady] = await Promise.all([
+    listPosItems(),
+    isProviderLive("paystack"),
+  ]);
 
   return (
     <>
@@ -37,7 +44,7 @@ export default async function AdminPosPage() {
           />
         </Panel>
       ) : (
-        <PosTerminal items={items} />
+        <PosTerminal items={items} paystackReady={paystackReady} />
       )}
     </>
   );

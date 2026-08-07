@@ -21,6 +21,11 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAdminCurrency } from "@/components/admin/admin-currency";
 import { recordSale } from "@/app/actions/admin/pos";
+import {
+  abandonSalePayment,
+  chargeSale,
+  pollSalePayment,
+} from "@/app/actions/admin/pos-payment";
 import type { PosItem } from "@/lib/admin/queries";
 import type { SaleRow } from "@/lib/supabase/types";
 import { AdminButton, Badge, Panel } from "@/components/admin/primitives";
@@ -176,7 +181,47 @@ function useHeldSales(): HeldSale[] {
   );
 }
 
-export function PosTerminal({ items }: { items: PosItem[] }) {
+/** A Paystack charge the till is waiting on. */
+interface PendingCharge {
+  saleId: string;
+  sale: SaleRow;
+  lines: Line[];
+  /** Our payment reference — what the poll and the abandon both key on. */
+  reference: string;
+  method: "card" | "mpesa";
+  /** M-Pesa: Paystack's own instruction copy. */
+  displayText?: string;
+  /** M-Pesa: the handset the prompt went to. */
+  phone?: string;
+  /** Card: the hosted page to show as a link and a QR. */
+  url?: string;
+  startedAt: number;
+}
+
+/**
+ * How long the till waits before giving up on a prompt.
+ *
+ * Paystack abandons an unanswered mobile-money charge at around three minutes.
+ * Stopping a little short of that keeps the counter's copy of the story ahead
+ * of the provider's rather than behind it.
+ */
+const CHARGE_TIMEOUT_MS = 165_000;
+const POLL_INTERVAL_MS = 3_000;
+
+export function PosTerminal({
+  items,
+  paystackReady = false,
+}: {
+  items: PosItem[];
+  /**
+   * Whether card and M-Pesa should actually charge.
+   *
+   * Resolved on the server from Settings → Paystack. False leaves the two
+   * buttons behaving as they always did — labels on a sale settled some other
+   * way — so a shop with no Paystack account keeps a working till.
+   */
+  paystackReady?: boolean;
+}) {
   const router = useRouter();
 
   const [query, setQuery] = React.useState("");
@@ -193,6 +238,12 @@ export function PosTerminal({ items }: { items: PosItem[] }) {
     sale: SaleRow;
     lines: Line[];
   } | null>(null);
+
+  const [customerEmail, setCustomerEmail] = React.useState("");
+  const [mpesaPhone, setMpesaPhone] = React.useState("");
+
+  /** A charge in flight: the sale exists, pending, holding its stock. */
+  const [pending, setPending] = React.useState<PendingCharge | null>(null);
 
   const searchRef = React.useRef<HTMLInputElement>(null);
   const holds = useHeldSales();
@@ -413,10 +464,89 @@ export function PosTerminal({ items }: { items: PosItem[] }) {
 
   /* ---------------------------------------------------------------- complete */
 
+  /**
+   * Poll until Paystack resolves the charge.
+   *
+   * The webhook is the authority and usually settles first; this exists
+   * because a counter cannot wait on somebody else's network. Both paths land
+   * on the same guarded RPCs, so whichever is second is a no-op.
+   */
+  React.useEffect(() => {
+    if (!pending) return;
+
+    let live = true;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const stop = (message: string, tone: "error" | "info") => {
+      if (!live) return;
+      setPending(null);
+      if (tone === "error") toast.error(message);
+      else toast.info(message);
+      router.refresh();
+    };
+
+    const tick = async () => {
+      if (!live) return;
+
+      if (Date.now() - pending.startedAt > CHARGE_TIMEOUT_MS) {
+        await abandonSalePayment(pending.reference);
+        stop("No response. The sale was voided and stock returned.", "error");
+        return;
+      }
+
+      const result = await pollSalePayment(pending.reference);
+      if (!live) return;
+
+      if (result.state === "paid") {
+        setPending(null);
+        setCompleted({ sale: result.sale ?? pending.sale, lines: pending.lines });
+        setLines([]);
+        setTendered("");
+        setDiscount("");
+        setCustomerName("");
+        setCustomerEmail("");
+        setMpesaPhone("");
+        toast.success(result.message ?? "Payment received.");
+        router.refresh();
+        return;
+      }
+
+      if (result.state === "failed") {
+        stop(result.message ?? "That payment did not go through.", "error");
+        return;
+      }
+
+      timer = setTimeout(tick, POLL_INTERVAL_MS);
+    };
+
+    timer = setTimeout(tick, POLL_INTERVAL_MS);
+
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [pending, router]);
+
   const canComplete =
     lines.length > 0 && !saving && (method !== "cash" || tenderedMinor >= total);
 
+  /**
+   * Card and M-Pesa go through Paystack when it is configured.
+   *
+   * `other` never does — it is the escape hatch for a payment taken outside
+   * the system — and cash obviously does not. When Paystack is not set up the
+   * card and M-Pesa buttons still work as labels, exactly as they did before,
+   * so a shop that has not connected an account is not locked out of its till.
+   */
+  const viaPaystack =
+    paystackReady && (method === "card" || method === "mpesa");
+
   const complete = async () => {
+    if (viaPaystack && method === "mpesa" && !mpesaPhone.trim()) {
+      toast.error("Enter the customer's M-Pesa number.");
+      return;
+    }
+
     setSaving(true);
 
     const result = await recordSale({
@@ -428,19 +558,56 @@ export function PosTerminal({ items }: { items: PosItem[] }) {
       paymentMethod: method,
       discount: discountMinor,
       tendered: method === "cash" ? tenderedMinor : null,
+      // Written pending so the charge decides whether it counts as takings.
+      // Stock still comes off now — the goods are spoken for either way.
+      awaitPayment: viaPaystack,
     });
 
-    setSaving(false);
+    if (!result.ok || !result.sale) {
+      setSaving(false);
+      toast.error(result.message);
+      return;
+    }
 
-    if (result.ok && result.sale) {
+    if (!viaPaystack) {
+      setSaving(false);
       // The lines are kept for the receipt: the RPC returns the sale header,
       // and re-querying its items for a page that already has them would be a
       // round trip for nothing.
       setCompleted({ sale: result.sale, lines });
       router.refresh();
-    } else {
-      toast.error(result.message);
+      return;
     }
+
+    const charge = await chargeSale({
+      saleId: result.sale.id,
+      method,
+      phone: method === "mpesa" ? mpesaPhone.trim() : undefined,
+      email: customerEmail.trim() || undefined,
+    });
+
+    setSaving(false);
+
+    if (!charge.ok || !charge.reference) {
+      // The sale is pending with stock held. Failing the charge here would
+      // need a reference we never got, so it is left for the operator to void
+      // from Sales — visible, rather than silently stranded.
+      toast.error(charge.message);
+      router.refresh();
+      return;
+    }
+
+    setPending({
+      saleId: result.sale.id,
+      sale: result.sale,
+      lines,
+      reference: charge.reference,
+      method,
+      displayText: charge.displayText,
+      phone: charge.phone,
+      url: charge.url,
+      startedAt: Date.now(),
+    });
   };
 
   /* ----------------------------------------------------------------- render */
@@ -859,6 +1026,37 @@ export function PosTerminal({ items }: { items: PosItem[] }) {
                   />
                 </Field>
               )}
+
+              {/* Only when the charge is real. With Paystack unconfigured
+                  these two are labels on a sale settled some other way, and
+                  asking for a phone number would imply a prompt that is never
+                  going to arrive. */}
+              {viaPaystack && method === "mpesa" && (
+                <Field label="M-Pesa number" hint="The prompt goes here">
+                  <input
+                    value={mpesaPhone}
+                    onChange={(event) => setMpesaPhone(event.target.value)}
+                    inputMode="tel"
+                    placeholder="07XX XXX XXX"
+                    className={cn(inputClass(false), "admin-figure")}
+                  />
+                </Field>
+              )}
+
+              {viaPaystack && (
+                <Field
+                  label="Customer email"
+                  hint={method === "card" ? "For the receipt" : "Optional"}
+                >
+                  <input
+                    value={customerEmail}
+                    onChange={(event) => setCustomerEmail(event.target.value)}
+                    inputMode="email"
+                    placeholder="Paystack needs one; the shop's is used otherwise"
+                    className={inputClass(false)}
+                  />
+                </Field>
+              )}
             </div>
 
             <div className="mt-auto flex flex-col gap-4">
@@ -906,6 +1104,19 @@ export function PosTerminal({ items }: { items: PosItem[] }) {
         </Panel>
       </div>
 
+      {pending && (
+        <ChargeOverlay
+          charge={pending}
+          onAbandon={async () => {
+            const reference = pending.reference;
+            setPending(null);
+            await abandonSalePayment(reference);
+            toast.info("Payment cancelled and stock returned.");
+            router.refresh();
+          }}
+        />
+      )}
+
       {completed && (
         <ReceiptModal
           sale={completed.sale}
@@ -915,6 +1126,115 @@ export function PosTerminal({ items }: { items: PosItem[] }) {
       )}
     </>
   );
+}
+
+/* ------------------------------------------------------------------ charge */
+
+/**
+ * Blocking, on purpose.
+ *
+ * The charge is live on the customer's handset and the stock is already held.
+ * An operator who wanders back to the cart and rings the sale up again takes
+ * the money twice. "Cancel" is explicit and tells the server, so the sale is
+ * voided and the stock returned rather than stranded pending.
+ */
+function ChargeOverlay({
+  charge,
+  onAbandon,
+}: {
+  charge: PendingCharge;
+  onAbandon: () => void;
+}) {
+  const [elapsed, setElapsed] = React.useState(0);
+  const [cancelling, setCancelling] = React.useState(false);
+
+  React.useEffect(() => {
+    const id = setInterval(
+      () => setElapsed(Math.floor((Date.now() - charge.startedAt) / 1000)),
+      1000
+    );
+    return () => clearInterval(id);
+  }, [charge.startedAt]);
+
+  // Derived from the ticking state rather than a fresh Date.now(): reading the
+  // clock during render is impure, and `elapsed` is already the same number.
+  const remaining = Math.max(0, Math.ceil(CHARGE_TIMEOUT_MS / 1000) - elapsed);
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed inset-0 z-50 grid place-items-center bg-admin-bg/95 p-6 backdrop-blur-sm"
+    >
+      <div className="w-full max-w-sm rounded-lg border border-admin-line bg-admin-panel p-7 text-center">
+        <Loader2
+          className="mx-auto size-7 animate-spin text-champagne-dark"
+          strokeWidth={1.5}
+        />
+
+        <h2 className="mt-5 text-[1.0625rem] font-semibold text-admin-fg">
+          {charge.method === "mpesa" ? "Waiting for the customer" : "Waiting for payment"}
+        </h2>
+
+        {charge.method === "mpesa" ? (
+          <>
+            <p className="mt-3 text-[0.8125rem] leading-relaxed text-admin-muted">
+              {charge.displayText ??
+                "Ask them to check their phone and enter their M-Pesa PIN."}
+            </p>
+            {charge.phone && (
+              <p className="admin-figure mt-4 rounded-md border border-admin-line px-3 py-2 text-[0.875rem] font-semibold">
+                {charge.phone}
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="mt-3 text-[0.8125rem] leading-relaxed text-admin-muted">
+              Have the customer open this on their own phone to enter their
+              card. Nothing is typed into this device.
+            </p>
+            {charge.url && (
+              <a
+                href={charge.url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 block break-all rounded-md border border-admin-line px-3 py-2 text-[0.6875rem] text-champagne-dark underline-offset-2 hover:underline"
+              >
+                {charge.url}
+              </a>
+            )}
+          </>
+        )}
+
+        <p className="admin-figure mt-5 text-[0.75rem] text-admin-faint">
+          {formatElapsed(elapsed)} · giving up in {formatElapsed(remaining)}
+        </p>
+
+        <button
+          type="button"
+          disabled={cancelling}
+          onClick={() => {
+            setCancelling(true);
+            onAbandon();
+          }}
+          className="mt-6 text-[0.75rem] text-admin-muted underline-offset-2 transition-colors hover:text-destructive hover:underline disabled:opacity-50"
+        >
+          {cancelling ? "Cancelling…" : "Cancel this payment"}
+        </button>
+
+        <p className="mt-5 text-[0.6875rem] leading-relaxed text-admin-faint">
+          The sale is held with its stock reserved. Cancelling voids it and puts
+          the stock back.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function formatElapsed(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 /* ------------------------------------------------------------------ pieces */

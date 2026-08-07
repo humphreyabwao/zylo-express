@@ -93,10 +93,16 @@ function newReference(): string {
 /* ------------------------------------------------------------------ start */
 
 export interface StartPaymentInput {
-  orderId: string;
+  /**
+   * What is being paid for. Exactly one, matching the `payments_belongs_to_one`
+   * constraint — an online order, or a sale rung up at the till.
+   */
+  orderId?: string;
+  saleId?: string;
+  /** The order or sale reference, sent to the provider as metadata. */
   orderReference: string;
   email: string;
-  /** Order total in store currency (USD minor units). */
+  /** Order or sale total in store currency (USD minor units). */
   amount: number;
   method: PaymentMethod;
   /** Required for M-Pesa; ignored otherwise. */
@@ -150,7 +156,8 @@ export async function startPayment(
   const { data: payment, error } = await supabase
     .from("payments")
     .insert({
-      order_id: input.orderId,
+      order_id: input.orderId ?? null,
+      sale_id: input.saleId ?? null,
       provider,
       method: input.method,
       status: "pending",
@@ -172,9 +179,13 @@ export async function startPayment(
 
   const siteUrl = env.siteUrl;
   const metadata = {
-    order_id: input.orderId,
+    order_id: input.orderId ?? null,
+    sale_id: input.saleId ?? null,
     order_reference: input.orderReference,
     payment_reference: reference,
+    // Shows in the Paystack dashboard, where a counter charge and a website
+    // order otherwise look identical.
+    channel: input.saleId ? "pos" : "web",
   };
 
   try {
@@ -342,7 +353,10 @@ export async function settlePayment(
   if (!data) return false;
 
   const payment = await getPaymentByReference(reference);
-  if (payment) {
+
+  // Promotion codes belong to online orders. A counter sale has no order_id
+  // and no promotion to count, so it skips this entirely.
+  if (payment?.order_id) {
     const { data: order } = await supabase
       .from("orders")
       .select("promotion_code")

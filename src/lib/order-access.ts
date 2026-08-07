@@ -25,7 +25,14 @@ const COOKIE = "zylo.order";
 const MAX_AGE_SECONDS = 60 * 60;
 
 /** Grant access and return the order's human reference for the redirect. */
-export async function grantOrderAccess(orderId: string): Promise<string | null> {
+export async function grantOrderAccess(
+  // Nullable since `payments` grew a `sale_id`: a counter sale has no order to
+  // grant access to, and the confirmation page it would lead to does not exist
+  // for one. Callers on the checkout path always pass an id.
+  orderId: string | null
+): Promise<string | null> {
+  if (!orderId) return null;
+
   const store = await cookies();
 
   store.set(COOKIE, orderId, {

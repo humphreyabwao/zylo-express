@@ -67,6 +67,15 @@ const saleSchema = z.object({
   discount: z.number().int().min(0).max(100_000_000).optional().default(0),
   tendered: z.number().int().min(0).max(100_000_000).nullable().optional().default(null),
   note: z.string().trim().max(500).optional().default(""),
+  /**
+   * Write the sale as `pending` because a Paystack charge is about to be
+   * started against it.
+   *
+   * The stock still comes off now — the goods are spoken for either way, and
+   * holding them is the point. What is deferred is whether the sale counts as
+   * takings, which `settle_payment` decides when the provider confirms.
+   */
+  awaitPayment: z.boolean().optional().default(false),
 });
 
 export async function recordSale(input: unknown): Promise<PosResult> {
@@ -113,6 +122,9 @@ export async function recordSale(input: unknown): Promise<PosResult> {
       parsed.data.paymentMethod === "cash" ? parsed.data.tendered : null,
     p_note: parsed.data.note,
     p_items: parsed.data.items,
+    // Cash and "other" are settled at the counter. A sale about to be charged
+    // through Paystack is not settled until the provider says so.
+    p_status: parsed.data.awaitPayment ? "pending" : "completed",
   });
 
   if (error) {
