@@ -210,6 +210,65 @@ export type OrderRow = {
   stock_released_at: string | null;
   tracking_carrier: string | null;
   tracking_number: string | null;
+
+  /* Migration 24. */
+
+  /**
+   * The id in a public `/track/…` URL — 32 chars, ~160 bits.
+   *
+   * Not the reference. This one is a bearer credential, so it must never be
+   * rendered anywhere the reference would be, and never logged.
+   */
+  tracking_token: string;
+}
+
+export type TrackingSourceDb = "system" | "staff" | "carrier";
+
+export type OrderTrackingEventRow = {
+  id: string;
+  order_id: string;
+  /** Null when the checkpoint did not change the order's status. */
+  status: OrderStatusDb | null;
+  label: string;
+  location: string | null;
+  country_code: string | null;
+  detail: string | null;
+  /** When it happened, which is not `created_at` — when it was recorded. */
+  occurred_at: string;
+  source: TrackingSourceDb;
+  /** False for an internal note. The customer's timeline filters on this. */
+  is_public: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+export type EmailCredentialRow = {
+  provider: "resend";
+  api_key: string | null;
+  from_email: string;
+  from_name: string;
+  reply_to: string | null;
+  enabled: boolean;
+  notify_on_status: boolean;
+  notify_on_tracking: boolean;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export type EmailDeliveryRow = {
+  id: string;
+  kind: string;
+  order_id: string | null;
+  event_id: string | null;
+  recipient: string;
+  subject: string;
+  status: "queued" | "sent" | "failed" | "skipped";
+  provider_id: string | null;
+  error: string | null;
+  /** Unique. The insert is the lock that makes a send happen once. */
+  dedupe_key: string;
+  created_at: string;
+  sent_at: string | null;
 }
 
 export type OrderItemRow = {
@@ -466,6 +525,39 @@ export type SiteSettingRow = {
   description: string | null;
 }
 
+/**
+ * Shape returned by the `tracking_by_token` RPC.
+ *
+ * camelCase rather than the snake_case every other row type uses, because the
+ * function builds this with `jsonb_build_object` rather than returning a row —
+ * it is a projection chosen field by field, not a table. Anything added here has
+ * to be added there too, which is the point: no `select *` can widen it by
+ * accident into disclosing an address.
+ */
+export type PublicTrackingEvent = {
+  id: string;
+  status: OrderStatusDb | null;
+  label: string;
+  location: string | null;
+  countryCode: string | null;
+  detail: string | null;
+  occurredAt: string;
+  source: TrackingSourceDb;
+};
+
+export type PublicTrackingRpcResult = {
+  reference: string;
+  status: OrderStatusDb;
+  placedAt: string;
+  shippingMethod: ShippingSpeedDb;
+  trackingCarrier: string | null;
+  trackingNumber: string | null;
+  trackingUrl: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  events: PublicTrackingEvent[];
+};
+
 /** Shape returned by the `inventory_summary` RPC. */
 export type InventorySummaryRpcResult = {
   variant_count: number;
@@ -554,6 +646,9 @@ export type Database = {
       appointments: Table<AppointmentRow>;
       sales: Table<SaleRow>;
       sale_items: Table<SaleItemRow>;
+      order_tracking_events: Table<OrderTrackingEventRow>;
+      email_credentials: Table<EmailCredentialRow>;
+      email_deliveries: Table<EmailDeliveryRow>;
     };
     Views: Record<string, never>;
     Functions: {
@@ -668,6 +763,34 @@ export type Database = {
       };
       /** Refuses an order with a settled payment. Releases stock on the way out. */
       delete_order: { Args: { p_order_id: string }; Returns: undefined };
+
+      /* Migration 24 — tracking. */
+
+      /** Records a checkpoint, optionally moving the status in the same call. */
+      add_tracking_event: {
+        Args: {
+          p_order_id: string;
+          p_label: string;
+          p_location?: string | null;
+          p_country_code?: string | null;
+          p_detail?: string | null;
+          p_status?: OrderStatusDb | null;
+          p_occurred_at?: string | null;
+          p_is_public?: boolean;
+        };
+        Returns: OrderTrackingEventRow;
+      };
+      /**
+       * The public tracking page's whole payload, for one token.
+       *
+       * Callable by `anon` on purpose — the token is the credential, because the
+       * emailed link has to work for a guest with no session. Returns null for
+       * an unknown token, and never an address, email, total or line item.
+       */
+      tracking_by_token: {
+        Args: { p_token: string };
+        Returns: PublicTrackingRpcResult | null;
+      };
 
       increment_promotion_usage: { Args: { p_code: string }; Returns: undefined };
       generate_order_reference: { Args: Record<string, never>; Returns: string };

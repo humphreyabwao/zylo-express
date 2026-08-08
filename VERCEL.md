@@ -34,6 +34,24 @@ true — the prefix is what inlines a value into the browser bundle.
 | `PAYPAL_WEBHOOK_ID` | Runtime | Without it the PayPal webhook rejects everything |
 | `FX_USD_KES` | Runtime | Live rate. Falls back to a stale constant |
 | `CRON_SECRET` | Runtime | Bearer token for `/api/payments/expire` |
+| `RESEND_API_KEY` | Runtime | Order and tracking email. Fallback for Settings → Email |
+| `RESEND_FROM_EMAIL` | Runtime | Must be on a **verified domain** — see below |
+| `RESEND_FROM_NAME` | Runtime | Defaults to `ZYLO Express` |
+| `RESEND_REPLY_TO` | Runtime | Optional |
+
+> **`SITE_URL` is what builds the tracking links in emails.** `/track/<token>`
+> URLs are absolute — an email has no origin to resolve against — so they are
+> built from `resolveSiteUrl()`. If `SITE_URL` is unset in production the links
+> fall through to `VERCEL_PROJECT_PRODUCTION_URL`, which is usually right, and on
+> a preview to `VERCEL_URL`, which is a per-deployment host that stops resolving
+> when the deployment is superseded. Set it explicitly.
+
+> **Resend will not deliver to customers until a domain is verified.** On the
+> shared sandbox sender `onboarding@resend.dev` the API returns 200 and delivers
+> only to your own Resend account address. Every order email silently goes
+> nowhere. Verify a domain at resend.com → Domains, then set the From address to
+> one on it — in Settings → Email, or here. The portal shows a Sandbox badge and
+> a warning while this is the case.
 
 > **Scope every variable to the environment you are deploying.** Vercel scopes
 > each variable to Production, Preview and Development independently, and a

@@ -7,6 +7,7 @@ import {
   Check,
   Eye,
   Loader2,
+  MapPin,
   Printer,
   Trash2,
   Truck,
@@ -15,6 +16,7 @@ import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import {
+  addTrackingEvent,
   cancelOrder,
   deleteOrder,
   getOrder,
@@ -36,8 +38,10 @@ import {
   Modal,
   ModalBody,
   ModalFooter,
+  Toggle,
   inputClass,
 } from "@/components/admin/modal";
+import type { OrderStatusDb } from "@/lib/supabase/types";
 
 /**
  * Row actions for a website order.
@@ -64,7 +68,35 @@ const STAMP = new Intl.DateTimeFormat("en-GB", {
   minute: "2-digit",
 });
 
-type Busy = null | "status" | "cancel" | "delete" | "tracking";
+type Busy = null | "status" | "cancel" | "delete" | "tracking" | "checkpoint";
+
+/**
+ * Shows a green toast for the action and a separate warning when the email did
+ * not go out.
+ *
+ * Two toasts rather than one hedged sentence: the status change *did* happen,
+ * and folding "but email failed" into its message makes a completed action read
+ * as a failed one. The warning names the reason, which is usually actionable —
+ * no key saved, sandbox sender, Resend down.
+ */
+function report(result: {
+  ok: boolean;
+  message: string;
+  emailNote?: string;
+}): void {
+  if (!result.ok) {
+    toast.error(result.message);
+    return;
+  }
+
+  toast.success(result.message);
+  if (result.emailNote) {
+    toast.warning("The customer was not emailed.", {
+      description: result.emailNote,
+      duration: 8000,
+    });
+  }
+}
 
 export function OrderActions({
   order,
@@ -78,22 +110,19 @@ export function OrderActions({
   const [busy, setBusy] = React.useState<Busy>(null);
   const [viewing, setViewing] = React.useState(false);
   const [tracking, setTracking] = React.useState(false);
+  const [checkpoint, setCheckpoint] = React.useState(false);
   const [cancelling, setCancelling] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
 
   const run = async (
     kind: Busy,
-    work: () => Promise<{ ok: boolean; message: string }>
+    work: () => Promise<{ ok: boolean; message: string; emailNote?: string }>
   ) => {
     setBusy(kind);
     try {
       const result = await work();
-      if (result.ok) {
-        toast.success(result.message);
-        router.refresh();
-      } else {
-        toast.error(result.message);
-      }
+      report(result);
+      if (result.ok) router.refresh();
       return result;
     } finally {
       setBusy(null);
@@ -113,6 +142,15 @@ export function OrderActions({
               onClick={() => {
                 close();
                 setViewing(true);
+              }}
+            />
+
+            <MenuItem
+              icon={MapPin}
+              label="Add checkpoint"
+              onClick={() => {
+                close();
+                setCheckpoint(true);
               }}
             />
 
@@ -201,6 +239,20 @@ export function OrderActions({
 
       {viewing && (
         <OrderDrawer order={order} onClose={() => setViewing(false)} />
+      )}
+
+      {checkpoint && (
+        <CheckpointDialog
+          order={order}
+          canElevate={canElevate}
+          onClose={() => setCheckpoint(false)}
+          onSave={async (values) => {
+            const result = await run("checkpoint", () =>
+              addTrackingEvent({ orderId: order.id, ...values })
+            );
+            return result.ok;
+          }}
+        />
       )}
 
       {tracking && (
@@ -538,6 +590,213 @@ function Total({ label, amount }: { label: string; amount: number }) {
         <Money amount={amount} />
       </dd>
     </div>
+  );
+}
+
+/* -------------------------------------------------------------- checkpoint */
+
+/**
+ * The half-dozen things that actually get typed.
+ *
+ * A free-text box with no suggestions produces "left warehouse", "Left
+ * Warehouse", "departed WH" and "shipped out" from four operators for one event,
+ * and a customer-facing timeline reading like four different companies. These
+ * fill the field and stay editable.
+ */
+const COMMON_CHECKPOINTS = [
+  "Left our warehouse",
+  "Arrived at the airport",
+  "Departed origin country",
+  "Arrived in destination country",
+  "Cleared customs",
+  "With the local courier",
+  "Out for delivery",
+];
+
+function CheckpointDialog({
+  order,
+  canElevate,
+  onClose,
+  onSave,
+}: {
+  order: OrderListRow;
+  canElevate: boolean;
+  onClose: () => void;
+  onSave: (values: {
+    label: string;
+    location: string;
+    countryCode: string;
+    detail: string;
+    status?: OrderStatusDb;
+    occurredAt?: string;
+    isPublic: boolean;
+    notify: boolean;
+  }) => Promise<boolean>;
+}) {
+  const [label, setLabel] = React.useState("");
+  const [location, setLocation] = React.useState("");
+  const [countryCode, setCountryCode] = React.useState("");
+  const [detail, setDetail] = React.useState("");
+  const [status, setStatus] = React.useState<OrderStatusDb | "">("");
+  const [isPublic, setIsPublic] = React.useState(true);
+  const [notify, setNotify] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!label.trim()) return;
+
+    setSaving(true);
+    try {
+      const ok = await onSave({
+        label,
+        location,
+        countryCode,
+        detail,
+        status: status || undefined,
+        isPublic,
+        // An internal note is never emailed, whatever this says — the action
+        // enforces that. Reflected here so the checkbox does not promise
+        // something the server will refuse.
+        notify: notify && isPublic,
+      });
+      if (ok) onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Add checkpoint" size="lg" onClose={onClose}>
+      <form onSubmit={submit}>
+        <ModalBody>
+          <p className="mb-4 text-[0.8125rem] leading-relaxed text-admin-muted">
+            Where <strong className="text-admin-fg">{order.reference}</strong> has
+            got to. This appears on the customer&rsquo;s tracking page
+            immediately.
+          </p>
+
+          <div className="space-y-4">
+            <Field label="What happened" hint="One line, in the customer's words">
+              <input
+                value={label}
+                onChange={(event) => setLabel(event.target.value)}
+                placeholder="Departed Guangzhou"
+                maxLength={120}
+                required
+                autoFocus
+                className={cn(inputClass(false), "mt-1")}
+              />
+            </Field>
+
+            <div className="flex flex-wrap gap-1.5">
+              {COMMON_CHECKPOINTS.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => setLabel(suggestion)}
+                  className="rounded-full border border-admin-line px-2.5 py-1 text-[0.6875rem] text-admin-muted transition-colors duration-150 hover:border-admin-fg/30 hover:text-admin-fg"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-[1fr_7rem]">
+              <Field label="Location" hint="Optional">
+                <input
+                  value={location}
+                  onChange={(event) => setLocation(event.target.value)}
+                  placeholder="Guangzhou, China"
+                  maxLength={120}
+                  className={cn(inputClass(false), "mt-1")}
+                />
+              </Field>
+
+              <Field label="Country" hint="Two letters">
+                <input
+                  value={countryCode}
+                  onChange={(event) =>
+                    setCountryCode(event.target.value.toUpperCase().slice(0, 2))
+                  }
+                  placeholder="CN"
+                  maxLength={2}
+                  className={cn(inputClass(false), "mt-1 uppercase")}
+                />
+              </Field>
+            </div>
+
+            <Field label="Note" hint="Optional second line">
+              <input
+                value={detail}
+                onChange={(event) => setDetail(event.target.value)}
+                placeholder="Held for customs inspection"
+                maxLength={400}
+                className={cn(inputClass(false), "mt-1")}
+              />
+            </Field>
+
+            <Field
+              label="Also move the order to"
+              hint="Optional. Leave as is to record the checkpoint only."
+            >
+              <select
+                value={status}
+                onChange={(event) =>
+                  setStatus(event.target.value as OrderStatusDb | "")
+                }
+                className={cn(inputClass(false), "mt-1")}
+              >
+                <option value="">Leave the status unchanged</option>
+                {ORDER_ROUTINE_STATUSES.filter((s) => s !== order.status).map(
+                  (option) => (
+                    <option key={option} value={option}>
+                      {ORDER_STATUS_LABEL[option]}
+                    </option>
+                  )
+                )}
+              </select>
+            </Field>
+
+            <div className="space-y-3 border-t border-admin-line pt-4">
+              <Toggle
+                checked={isPublic}
+                onChange={(value) => {
+                  setIsPublic(value);
+                  if (!value) setNotify(false);
+                }}
+                label="Show the customer"
+                hint="Off makes this an internal note — visible in the portal only, and never emailed."
+              />
+              <Toggle
+                checked={notify}
+                onChange={setNotify}
+                disabled={!isPublic}
+                label="Email the customer"
+                hint="Sends the tracking email with this checkpoint at the top."
+              />
+            </div>
+
+            {!canElevate && (
+              <p className="text-[0.6875rem] leading-relaxed text-admin-faint">
+                Cancelling or refunding from here needs an administrator, so
+                those statuses are not offered.
+              </p>
+            )}
+          </div>
+        </ModalBody>
+
+        <ModalFooter>
+          <AdminButton type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </AdminButton>
+          <AdminButton type="submit" disabled={saving || !label.trim()}>
+            {saving && <Loader2 className="size-3.5 animate-spin" strokeWidth={2} />}
+            {saving ? "Saving…" : "Add checkpoint"}
+          </AdminButton>
+        </ModalFooter>
+      </form>
+    </Modal>
   );
 }
 

@@ -5,7 +5,14 @@ import type { User } from "@supabase/supabase-js";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { getCountry } from "@/lib/countries";
 import type { Country } from "@/lib/types";
-import type { AddressRow, OrderItemRow, OrderRow, UserRoleDb } from "@/lib/supabase/types";
+import type {
+  AddressRow,
+  OrderItemRow,
+  OrderRow,
+  OrderTrackingEventRow,
+  UserRoleDb,
+} from "@/lib/supabase/types";
+import type { TimelineEvent } from "@/components/account/tracking-timeline";
 
 /**
  * The signed-in customer's data.
@@ -301,6 +308,137 @@ export async function getAccountOrders(limit = 20): Promise<AccountOrder[]> {
     return [];
   }
   return (data as unknown as OrderJoin[]).map(mapOrder);
+}
+
+/* -------------------------------------------------------------- tracking */
+
+export interface AccountTracking {
+  id: string;
+  reference: string;
+  status: OrderRow["status"];
+  placedAt: string;
+  /** The public link — also what the emailed button points at. */
+  trackingToken: string;
+  trackingCarrier: string | null;
+  trackingNumber: string | null;
+  trackingUrl: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  itemCount: number;
+  origins: Country[];
+  /** A thumbnail each, for recognising the parcel at a glance. */
+  thumbnails: string[];
+  events: TimelineEvent[];
+}
+
+/**
+ * Every order with its checkpoint timeline.
+ *
+ * Two queries rather than a nested select. PostgREST applies `limit` to the
+ * *parent* rows of an embedded resource but has no per-parent limit on the
+ * child, so `orders(…, order_tracking_events(*))` on a long-running order fetches
+ * every checkpoint it ever had. Reading the events separately keeps one round
+ * trip and lets the ordering be stated once.
+ *
+ * The events themselves are RLS-filtered to public ones on the customer's own
+ * orders — see the policy in migration 24 — so nothing here has to filter for
+ * `is_public`, and an internal note cannot leak through a forgotten `where`.
+ */
+export async function getAccountTracking(limit = 20): Promise<AccountTracking[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*, order_items(image_url, quantity, origin_country_code)")
+    .order("placed_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.warn("[account] tracking unavailable:", error.message);
+    return [];
+  }
+
+  const orders = (data ?? []) as unknown as (OrderRow & {
+    order_items:
+      | { image_url: string | null; quantity: number; origin_country_code: string | null }[]
+      | null;
+  })[];
+
+  if (orders.length === 0) return [];
+
+  const { data: events } = await supabase
+    .from("order_tracking_events")
+    .select("*")
+    .in("order_id", orders.map((order) => order.id))
+    .order("occurred_at", { ascending: false });
+
+  const byOrder = new Map<string, TimelineEvent[]>();
+  for (const row of (events ?? []) as OrderTrackingEventRow[]) {
+    const list = byOrder.get(row.order_id) ?? [];
+    list.push({
+      id: row.id,
+      status: row.status,
+      label: row.label,
+      location: row.location,
+      countryCode: row.country_code,
+      detail: row.detail,
+      occurredAt: row.occurred_at,
+      source: row.source,
+    });
+    byOrder.set(row.order_id, list);
+  }
+
+  return orders.map((order) => {
+    const items = order.order_items ?? [];
+
+    const origins: Country[] = [];
+    const seen = new Set<string>();
+    for (const item of items) {
+      const code = item.origin_country_code;
+      if (!code || seen.has(code)) continue;
+      seen.add(code);
+      const country = getCountry(code);
+      if (country) origins.push(country);
+    }
+
+    return {
+      id: order.id,
+      reference: order.reference,
+      status: order.status,
+      placedAt: order.placed_at,
+      trackingToken: order.tracking_token,
+      trackingCarrier: order.tracking_carrier ?? null,
+      trackingNumber: order.tracking_number ?? null,
+      trackingUrl: order.tracking_url,
+      cancelledAt: order.cancelled_at ?? null,
+      cancelReason: order.cancel_reason ?? null,
+      itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
+      origins,
+      thumbnails: items
+        .map((item) => item.image_url)
+        .filter((url): url is string => Boolean(url))
+        .slice(0, 4),
+      events: byOrder.get(order.id) ?? [],
+    };
+  });
+}
+
+/**
+ * Orders worth watching — anything not yet finished.
+ *
+ * What the Tracking tab leads with. A delivered order from March is history and
+ * belongs below the fold, not at the top of a screen somebody opened to find out
+ * where today's parcel is.
+ */
+export function selectActiveTracking(
+  orders: AccountTracking[]
+): AccountTracking[] {
+  return orders.filter(
+    (order) =>
+      order.status !== "delivered" &&
+      order.status !== "cancelled" &&
+      order.status !== "refunded"
+  );
 }
 
 /**

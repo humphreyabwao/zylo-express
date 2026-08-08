@@ -12,7 +12,12 @@ import { CacheTags, invalidateTags } from "@/lib/cache";
 import { describeError, refusalMessage } from "@/lib/admin/errors";
 import { getOrderDetail, type OrderDetail } from "@/lib/admin/queries";
 import { ORDER_ELEVATED_STATUSES } from "@/lib/admin/status";
-import type { OrderRow } from "@/lib/supabase/types";
+import {
+  notifyOrderStatus,
+  notifyTrackingEvent,
+} from "@/lib/email/notifications";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { OrderRow, OrderTrackingEventRow } from "@/lib/supabase/types";
 
 /**
  * Order state changes.
@@ -38,6 +43,15 @@ export interface OrderActionResult {
   ok: boolean;
   message: string;
   order?: OrderRow;
+  /** Whether a customer email went out as part of this action. */
+  emailed?: boolean;
+  /**
+   * Why it did not, when the action itself succeeded.
+   *
+   * Kept apart from `message` so a Resend outage shows as a warning beside a
+   * green toast rather than making a completed status change look failed.
+   */
+  emailNote?: string;
 }
 
 async function authorise(
@@ -143,13 +157,29 @@ export async function setOrderStatus(input: unknown): Promise<OrderActionResult>
   }
 
   done();
+
+  const order = data as unknown as OrderRow;
+
+  // Awaited, not fired and forgotten. A serverless function is frozen the
+  // instant its response is returned, so a floating promise here is a send that
+  // usually never happens and fails invisibly when it does. The cost is the
+  // round trip to Resend on the operator's click; the alternative is email that
+  // works locally and silently does not in production.
+  const mail = await notifyOrderStatus(order);
+
+  const base =
+    parsed.data.status === "cancelled"
+      ? "Order cancelled and stock returned."
+      : "Order updated. The customer sees this on their account.";
+
   return {
     ok: true,
-    message:
-      parsed.data.status === "cancelled"
-        ? "Order cancelled and stock returned."
-        : "Order updated. The customer sees this on their account.",
-    order: data as unknown as OrderRow,
+    message: mail.sent ? `${base} Customer emailed.` : base,
+    // Surfaced separately so a failed send is visible without turning a
+    // successful status change into a red toast — the status *did* change.
+    emailed: mail.sent,
+    emailNote: mail.sent || mail.duplicate ? undefined : mail.reason,
+    order,
   };
 }
 
@@ -268,6 +298,138 @@ export async function deleteOrder(input: unknown): Promise<OrderActionResult> {
 
   done();
   return { ok: true, message: "Order deleted." };
+}
+
+/* -------------------------------------------------------------- checkpoint */
+
+const checkpointSchema = z.object({
+  orderId: z.string().uuid("Unknown order."),
+  label: z
+    .string()
+    .trim()
+    .min(1, "Say what happened.")
+    .max(120, "Keep the description under 120 characters."),
+  location: z.string().trim().max(120, "That location is too long.").optional(),
+  countryCode: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z]{2}$/, "Use a two-letter country code.")
+    .optional()
+    .or(z.literal("")),
+  detail: z.string().trim().max(400, "Keep the note under 400 characters.").optional(),
+  /** Optional: a checkpoint may advance the order in the same action. */
+  status: z
+    .enum([
+      "pending",
+      "confirmed",
+      "in-atelier",
+      "shipped",
+      "delivered",
+      "cancelled",
+      "refunded",
+    ])
+    .optional(),
+  /** ISO. Defaults to now — a scan at 03:00 typed in at 09:00 belongs at 03:00. */
+  occurredAt: z.string().trim().optional(),
+  isPublic: z.boolean().default(true),
+  /** Whether to email the customer about this checkpoint. */
+  notify: z.boolean().default(true),
+});
+
+export interface CheckpointResult extends OrderActionResult {
+  event?: OrderTrackingEventRow;
+}
+
+/**
+ * Record where the parcel has got to.
+ *
+ * Elevation is *not* required: telling a customer their order left the warehouse
+ * is counter work, the same as marking it shipped. The one case that needs more
+ * authority is a checkpoint that also moves the status to `cancelled` or
+ * `refunded`, and `set_order_status` — which `add_tracking_event` calls
+ * internally — is not what enforces that, so it is checked here.
+ */
+export async function addTrackingEvent(input: unknown): Promise<CheckpointResult> {
+  const parsed = checkpointSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: parsed.error.issues[0]?.message ?? "Check those details.",
+    };
+  }
+
+  const values = parsed.data;
+
+  const refusal = await authorise(
+    values.status ? ORDER_ELEVATED_STATUSES.includes(values.status) : false
+  );
+  if (refusal) return refusal;
+
+  const supabase = await createOperatorClient();
+
+  const { data, error } = await supabase.rpc("add_tracking_event", {
+    p_order_id: values.orderId,
+    p_label: values.label,
+    p_location: values.location || null,
+    p_country_code: values.countryCode || null,
+    p_detail: values.detail || null,
+    p_status: values.status ?? null,
+    p_occurred_at: values.occurredAt || null,
+    p_is_public: values.isPublic,
+  });
+
+  if (error) {
+    console.error("[admin] add tracking event failed:", describeError(error));
+    return {
+      ok: false,
+      message: readableRefusal(error, "Could not record that checkpoint."),
+    };
+  }
+
+  done();
+
+  const event = data as unknown as OrderTrackingEventRow;
+
+  /*
+   * An internal note is never emailed, whatever the operator ticked. The whole
+   * point of `is_public = false` is that it is a message to the next member of
+   * staff, and "supplier says two more days, do not promise" reaching the
+   * customer is the exact failure the flag exists to prevent.
+   */
+  if (!values.notify || !values.isPublic) {
+    return {
+      ok: true,
+      message: values.isPublic
+        ? "Checkpoint added."
+        : "Internal note added. The customer will not see it.",
+      event,
+    };
+  }
+
+  // The row as it now stands — the RPC may have moved the status, and the email
+  // has to describe the order rather than the order as it was.
+  const { data: order } = await createAdminClient()
+    .from("orders")
+    .select("*")
+    .eq("id", values.orderId)
+    .maybeSingle();
+
+  if (!order) {
+    return { ok: true, message: "Checkpoint added.", event };
+  }
+
+  const mail = await notifyTrackingEvent(order as OrderRow, event.id);
+
+  return {
+    ok: true,
+    message: mail.sent
+      ? "Checkpoint added and the customer emailed."
+      : "Checkpoint added.",
+    emailed: mail.sent,
+    emailNote: mail.sent || mail.duplicate ? undefined : mail.reason,
+    event,
+  };
 }
 
 /* ------------------------------------------------------------------ read */

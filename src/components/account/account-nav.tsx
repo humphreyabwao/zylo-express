@@ -8,6 +8,7 @@ import {
   LayoutGrid,
   LogOut,
   MapPin,
+  Navigation,
   Package,
   Settings,
   type LucideIcon,
@@ -19,6 +20,9 @@ import { cn } from "@/lib/utils";
 const LINKS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/account", label: "Overview", icon: LayoutGrid },
   { href: "/account/orders", label: "Orders", icon: Package },
+  // Beside Orders rather than inside it: "where is my parcel" is a different
+  // question from "what did I buy", and it is the one people come back for.
+  { href: "/account/tracking", label: "Tracking", icon: Navigation },
   { href: "/account/wishlist", label: "Saved", icon: Heart },
   { href: "/account/addresses", label: "Addresses", icon: MapPin },
   { href: "/account/settings", label: "Settings", icon: Settings },

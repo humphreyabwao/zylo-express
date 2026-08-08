@@ -23,7 +23,18 @@ const MINIMAL_ROUTES = ["/checkout"];
  * search overlay and mobile nav inside the dashboard — shopper state and
  * shopper keyboard shortcuts in an operator tool.
  */
-const BARE_ROUTES = ["/admin"];
+const BARE_ROUTES = [
+  "/admin",
+  /**
+   * The public tracking page.
+   *
+   * Opened from an email, on a phone, to answer one question. A header, a
+   * mega-menu and a newsletter sign-up are all in the way of that — and the
+   * cart drawer and search overlay are shopper state on a page reached with a
+   * bearer token, which may not be the account holder's browser at all.
+   */
+  "/track",
+];
 
 /**
  * Client boundary only so the frame can react to the route. `children` is
