@@ -23,6 +23,57 @@ export const ORDER_STATUS_TONE: Record<OrderStatusDb, Tone> = {
   refunded: "critical",
 };
 
+/**
+ * What an operator calls each status.
+ *
+ * The portal's words, not the customer's — `@/lib/order-status` has those, and
+ * they differ deliberately. Staff read `in-atelier` as a workflow stage they
+ * work in; a customer reads "Being prepared".
+ */
+export const ORDER_STATUS_LABEL: Record<OrderStatusDb, string> = {
+  pending: "Pending",
+  confirmed: "Confirmed",
+  "in-atelier": "In atelier",
+  shipped: "Shipped",
+  delivered: "Delivered",
+  cancelled: "Cancelled",
+  refunded: "Refunded",
+};
+
+/**
+ * The forward path through fulfilment, in order.
+ *
+ * Anything not in here is a reversal, and a reversal needs an administrator —
+ * see `ORDER_ELEVATED_STATUSES`. The row menu offers these as one click each
+ * because advancing an order is the most common action on that screen and a
+ * submenu would bury it.
+ */
+export const ORDER_ROUTINE_STATUSES: OrderStatusDb[] = [
+  "pending",
+  "confirmed",
+  "in-atelier",
+  "shipped",
+  "delivered",
+];
+
+/**
+ * Statuses that rewrite what already happened.
+ *
+ * Cancelling moves inventory and changes the customer's account page; marking
+ * refunded asserts that money went back. Both need elevation, and the split is
+ * declared here rather than inside the Server Action so the menu can grey out
+ * what it is about to be refused for.
+ *
+ * `src/app/actions/admin/orders.ts` re-derives authority from this same list —
+ * the client not offering an item is a courtesy, not the check.
+ */
+export const ORDER_ELEVATED_STATUSES: OrderStatusDb[] = ["cancelled", "refunded"];
+
+export const ORDER_STATUSES: OrderStatusDb[] = [
+  ...ORDER_ROUTINE_STATUSES,
+  ...ORDER_ELEVATED_STATUSES,
+];
+
 export const MESSAGE_STATUS_TONE: Record<MessageStatusDb, Tone> = {
   new: "warning",
   "in-progress": "accent",

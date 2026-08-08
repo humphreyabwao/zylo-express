@@ -42,11 +42,28 @@ source, and the copy you notice last is the one the database actually ran.
 it aborts on its own guard. Ask for just the migrations added since:
 
 ```bash
-npm run schema -- --from 7      # writes supabase/schema-pending.sql
+npm run schema -- --from 23     # writes supabase/schema-pending.sql
 ```
 
-The project database currently has migrations 1–6. Migrations **7 (payments)**
-and **8 (realtime)** are still pending, so `--from 7` is the file to paste.
+**Do not guess the number.** Ask the database what it has:
+
+```bash
+npm run db:status               # supabase migration list --linked
+```
+
+The linked project is applied through **23** as of 2026-08-08, so on that
+database there is nothing pending and this file is not needed at all. Re-generate
+at whatever offset `db:status` reports a gap from.
+
+The file carries no already-applied guard — it cannot know which subset you have
+run — so a second run aborts on the first duplicate object, having changed
+nothing.
+
+> **Migrations 16, 17 and 18 must arrive as three separate transactions.** 16
+> adds `superadmin` to an enum, and Postgres refuses any use of a new enum value
+> in the transaction that added it — including inside the function bodies in 17.
+> `npm run db:push` (Option B) runs each file in its own transaction and is the
+> supported route. Pasting the concatenation across that range will fail at 17.
 
 > **If it stops on `must be owner of table objects`** — that is the storage
 > policy block in migration 5. Some projects do not grant the SQL editor's role
@@ -64,6 +81,10 @@ and **8 (realtime)** are still pending, so `--from 7` is the file to paste.
 | 5 | `20260806000005_storage_and_rpc.sql` | storage buckets and policies, search/facet/inventory RPCs |
 | 6 | `20260806000006_oauth_profiles.sql` | profile trigger that understands OAuth metadata, plus a backfill |
 | 7 | `20260806000007_payments.sql` | payments, webhook event log, settle/fail/expire RPCs |
+| 8–15 | realtime, inventory, content admin, appointments, settings, bootstrap admin, POS | see the files |
+| 16–19 | permissions, permission helpers, bootstrap superadmin, payment credentials | per-module access control |
+| 20–22 | sale status, sale payments, record-sale status | till approve/cancel |
+| 23 | `20260806000023_order_actions.sql` | order status/tracking/delete RPCs, stock release, `replica identity full` on `orders` |
 
 ### Option B — Supabase CLI
 

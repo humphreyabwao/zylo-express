@@ -104,18 +104,53 @@ export function OrderSummaryCard({ order }: { order: AccountOrder }) {
           )}
         </div>
 
-        {order.trackingUrl && (
-          <Link
-            href={order.trackingUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex shrink-0 items-center gap-2 eyebrow-sm transition-opacity duration-500 hover:opacity-60"
-          >
-            Track
-            <ExternalLink className="size-3.5" strokeWidth={1.25} />
-          </Link>
+        {/* Carrier and number sit beside the link rather than behind it: a
+            tracking page that has not picked the parcel up yet is a dead end,
+            and the number is what a customer reads out on the phone. */}
+        {(order.trackingUrl || order.trackingNumber) && (
+          <div className="shrink-0 text-right">
+            {order.trackingUrl ? (
+              <Link
+                href={order.trackingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 eyebrow-sm transition-opacity duration-500 hover:opacity-60"
+              >
+                Track
+                <ExternalLink className="size-3.5" strokeWidth={1.25} />
+              </Link>
+            ) : (
+              <p className="eyebrow-sm text-muted-foreground">Tracking</p>
+            )}
+
+            {order.trackingNumber && (
+              <p className="mt-1.5 text-xs font-light tabular-nums text-muted-foreground">
+                {order.trackingCarrier
+                  ? `${order.trackingCarrier} · `
+                  : ""}
+                {order.trackingNumber}
+              </p>
+            )}
+          </div>
         )}
       </div>
+
+      {/* A cancellation with no explanation is the message that generates the
+          support email this is meant to prevent. */}
+      {order.status === "cancelled" && (
+        <p className="border-t border-hairline px-5 py-4 text-xs font-light leading-relaxed text-muted-foreground lg:px-6">
+          Cancelled
+          {order.cancelledAt
+            ? ` on ${formatDate(order.cancelledAt, {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}`
+            : ""}
+          .{order.cancelReason ? ` ${order.cancelReason}.` : ""} Anything already
+          charged is refunded to the original payment method.
+        </p>
+      )}
     </article>
   );
 }

@@ -17,6 +17,7 @@ import type {
   SaleRow,
   SaleStatusDb,
   InventorySummaryRpcResult,
+  OrderItemRow,
   OrderRow,
   OrderStatusDb,
   ProductImageRow,
@@ -654,17 +655,52 @@ export async function listCustomers(
 
 /* -------------------------------------------------------------------- orders */
 
+export interface OrderFilters {
+  page?: number;
+  pageSize?: number;
+  status?: OrderStatusDb | "all";
+  /** Reference or email. The toolbar has always offered this box. */
+  search?: string;
+}
+
+export interface OrderListRow extends OrderRow {
+  item_count: number;
+  /**
+   * Whether money has actually settled against this order.
+   *
+   * Carried on the row because it decides whether the Delete action is offered
+   * at all: `delete_order` refuses a settled order, and a menu item that always
+   * fails is worse than one that is visibly unavailable. Derived from
+   * `payments`, so it is true even for an order whose status was later moved by
+   * hand.
+   */
+  paid: boolean;
+}
+
 export async function listOrders(
-  filters: { page?: number; pageSize?: number; status?: OrderStatusDb | "all" } = {}
-): Promise<Page<OrderRow>> {
+  filters: OrderFilters = {}
+): Promise<Page<OrderListRow>> {
   const supabase = await createOperatorClient();
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
   const from = (page - 1) * pageSize;
 
-  let query = supabase.from("orders").select("*", { count: "exact" });
+  // `order_items(id)` rather than the whole line: the count is all the list
+  // needs, and the drawer fetches the lines themselves only when opened.
+  let query = supabase
+    .from("orders")
+    .select("*, order_items(id)", { count: "exact" });
+
   if (filters.status && filters.status !== "all") {
     query = query.eq("status", filters.status);
+  }
+
+  const search = filters.search?.trim();
+  if (search) {
+    // Commas and parentheses are the `or` filter's own syntax; a search for
+    // "a,b" would otherwise be read as two conditions and 400 the request.
+    const safe = search.replace(/[(),]/g, " ").trim();
+    if (safe) query = query.or(`reference.ilike.%${safe}%,email.ilike.%${safe}%`);
   }
 
   const { data, count, error } = await query
@@ -673,10 +709,102 @@ export async function listOrders(
 
   if (error) {
     logQueryFailure("order list", error);
-    return toPage<OrderRow>([], 0, page, pageSize);
+    return toPage<OrderListRow>([], 0, page, pageSize);
   }
 
-  return toPage(data, count, page, pageSize);
+  const orders = (data ?? []) as unknown as (OrderRow & {
+    order_items: { id: string }[] | null;
+  })[];
+
+  // One follow-up query for the whole page rather than a correlated subquery
+  // per row. PostgREST cannot express "exists a settled payment" as a column,
+  // and twenty round trips to answer a yes/no is not a trade worth making.
+  const paidIds = new Set<string>();
+  if (orders.length > 0) {
+    const { data: payments } = await supabase
+      .from("payments")
+      .select("order_id")
+      .in("order_id", orders.map((order) => order.id))
+      .in("status", ["succeeded", "refunded"]);
+
+    for (const payment of payments ?? []) {
+      if (payment.order_id) paidIds.add(payment.order_id);
+    }
+  }
+
+  const rows: OrderListRow[] = orders.map(({ order_items, ...order }) => ({
+    ...order,
+    item_count: order_items?.length ?? 0,
+    paid: paidIds.has(order.id),
+  }));
+
+  return toPage(rows, count, page, pageSize);
+}
+
+/* ------------------------------------------------------ one order, in full */
+
+export interface OrderDetail extends OrderRow {
+  items: OrderItemRow[];
+  payments: OrderPaymentRow[];
+}
+
+/** The slice of a payment the drawer shows. Never the authorization URL. */
+export interface OrderPaymentRow {
+  id: string;
+  provider: string;
+  method: string;
+  status: string;
+  reference: string;
+  provider_reference: string | null;
+  amount: number;
+  charge_amount: number;
+  charge_currency: string;
+  paid_at: string | null;
+  failure_reason: string | null;
+  created_at: string;
+}
+
+/**
+ * A single order with its lines and its payment attempts.
+ *
+ * Read through the operator client, so the RLS policy is what decides whether
+ * this operator sees it — the module guard in the calling action decides whether
+ * they may ask at all. Both, not either.
+ */
+export async function getOrderDetail(id: string): Promise<OrderDetail | null> {
+  const supabase = await createOperatorClient();
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*, order_items(*)")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    logQueryFailure("order detail", error);
+    return null;
+  }
+  if (!data) return null;
+
+  const { order_items, ...order } = data as unknown as OrderRow & {
+    order_items: OrderItemRow[] | null;
+  };
+
+  const { data: payments } = await supabase
+    .from("payments")
+    .select(
+      "id, provider, method, status, reference, provider_reference, amount, charge_amount, charge_currency, paid_at, failure_reason, created_at"
+    )
+    .eq("order_id", id)
+    .order("created_at", { ascending: false });
+
+  return {
+    ...order,
+    // Cheapest line last reads as an afterthought; the order they were bought
+    // in is the order the customer will read them back in.
+    items: order_items ?? [],
+    payments: (payments ?? []) as unknown as OrderPaymentRow[],
+  };
 }
 
 /**

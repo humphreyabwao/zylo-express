@@ -55,11 +55,19 @@ export default async function AdminDashboardPage() {
       >
         {/* The figures here are sums over products, variants and the
             inbox, so the page listens on all three — subscribing only to
-            products left revenue and stock counts stale. */}
-        <RealtimeRefresh channel="orders" />
+            products left revenue and stock counts stale.
+
+            `orders` and `messages` are staff channels scoped to their module,
+            and the overview is the one screen everybody who can sign in
+            reaches — see `permissions.ts`. Guarded, because the realtime route
+            refuses a channel the operator has no grant for and a refused
+            EventSource fails rather than retrying. The figures themselves are
+            already read through RLS as this account, so a stockroom assistant
+            is not missing an update they would have been shown. */}
+        {identity.can("orders") && <RealtimeRefresh channel="orders" />}
+        {identity.can("messages") && <RealtimeRefresh channel="messages" />}
         <RealtimeRefresh channel="products" />
         <RealtimeRefresh channel="inventory" />
-        <RealtimeRefresh channel="messages" />
       </PageHeader>
 
       <StatRow>

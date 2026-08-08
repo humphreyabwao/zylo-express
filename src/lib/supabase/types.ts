@@ -198,6 +198,18 @@ export type OrderRow = {
   /** Free text kept with the order — the checkout writes the gift message here. */
   notes: string | null;
   placed_at: string;
+
+  /* Migration 23. Null on every row written before it was applied. */
+
+  cancelled_at: string | null;
+  cancel_reason: string | null;
+  /**
+   * Set when a cancellation returned these lines to stock; cleared on reinstate.
+   * Guards against crediting the shelf twice — see `set_order_status`.
+   */
+  stock_released_at: string | null;
+  tracking_carrier: string | null;
+  tracking_number: string | null;
 }
 
 export type OrderItemRow = {
@@ -633,6 +645,30 @@ export type Database = {
         Args: Record<string, never>;
         Returns: number;
       };
+      /**
+       * Order state changes, migration 23.
+       *
+       * `set_order_status` moves stock as well as status — cancelling returns
+       * every line to inventory and reinstating takes it off again, refusing if
+       * the units have since sold — which is why there is no plain update path
+       * for `orders.status` any more than there is for `sales.status`.
+       */
+      set_order_status: {
+        Args: { p_order_id: string; p_status: OrderStatusDb; p_reason?: string };
+        Returns: OrderRow;
+      };
+      set_order_tracking: {
+        Args: {
+          p_order_id: string;
+          p_carrier?: string | null;
+          p_number?: string | null;
+          p_url?: string | null;
+        };
+        Returns: OrderRow;
+      };
+      /** Refuses an order with a settled payment. Releases stock on the way out. */
+      delete_order: { Args: { p_order_id: string }; Returns: undefined };
+
       increment_promotion_usage: { Args: { p_code: string }; Returns: undefined };
       generate_order_reference: { Args: Record<string, never>; Returns: string };
       is_admin: { Args: Record<string, never>; Returns: boolean };

@@ -99,6 +99,22 @@ export interface OrderChange {
   status: string;
 }
 
+/**
+ * The signed-in customer's own orders.
+ *
+ * Same shape as `OrderChange` and a separate type on purpose: they are not
+ * interchangeable, because `orders` carries every order in the shop and staff
+ * are the only ones who may open it, while `my-orders` is filtered server-side
+ * to rows belonging to the caller. Sharing one type would make swapping the
+ * channel name a one-character edit that compiles.
+ */
+export interface MyOrderChange {
+  type: "INSERT" | "UPDATE" | "DELETE";
+  orderId: string;
+  reference: string;
+  status: string;
+}
+
 /** The key that changed, never its value. See the route. */
 export interface SettingsChange {
   type: "INSERT" | "UPDATE" | "DELETE";
@@ -123,6 +139,7 @@ type ChannelMap = {
   inventory: InventoryChange;
   products: ProductChange;
   orders: OrderChange;
+  "my-orders": MyOrderChange;
   sales: SaleChange;
   categories: CategoryChange;
   collections: CollectionChange;

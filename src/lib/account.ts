@@ -77,6 +77,12 @@ export interface AccountOrder {
   currency: OrderRow["currency"];
   shippingMethod: OrderRow["shipping_method"];
   trackingUrl: string | null;
+  /** Who is carrying it, and under what number. Set from the portal. */
+  trackingCarrier: string | null;
+  trackingNumber: string | null;
+  /** Populated when an operator cancels; the reason is written for the customer. */
+  cancelledAt: string | null;
+  cancelReason: string | null;
   lines: AccountOrderLine[];
   /** Distinct origins across the order — what a ZYLO Express parcel splits by. */
   origins: Country[];
@@ -258,6 +264,13 @@ function mapOrder(row: OrderJoin): AccountOrder {
     currency: row.currency,
     shippingMethod: row.shipping_method,
     trackingUrl: row.tracking_url,
+    // `?? null` rather than a bare read: these columns arrived in migration 23,
+    // and the catalogue falls back to seed data on an un-migrated database, so
+    // a row without them must render as "no tracking" rather than `undefined`.
+    trackingCarrier: row.tracking_carrier ?? null,
+    trackingNumber: row.tracking_number ?? null,
+    cancelledAt: row.cancelled_at ?? null,
+    cancelReason: row.cancel_reason ?? null,
     origins,
     itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
     lines: items.map((item) => ({
@@ -288,6 +301,42 @@ export async function getAccountOrders(limit = 20): Promise<AccountOrder[]> {
     return [];
   }
   return (data as unknown as OrderJoin[]).map(mapOrder);
+}
+
+/**
+ * Reference and status for the customer's orders, and nothing else.
+ *
+ * Seeds the realtime listener in the account shell so it can tell a status
+ * change from a change that merely touched the row — adding a tracking number
+ * updates `orders` too, and announcing "your order is Confirmed" because an
+ * operator typed a courier reference would be wrong every time.
+ *
+ * Deliberately not `getAccountOrders`: this runs on every page in the account
+ * area, and pulling every line and image to compare seven-character strings
+ * would be an expensive way to do nothing.
+ */
+export interface OrderStatusSeed {
+  id: string;
+  reference: string;
+  status: OrderRow["status"];
+}
+
+export async function getAccountOrderStatuses(
+  limit = 50
+): Promise<OrderStatusSeed[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id, reference, status")
+    .order("placed_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.warn("[account] order statuses unavailable:", error.message);
+    return [];
+  }
+  return data as OrderStatusSeed[];
 }
 
 /** Orders still on their way — the panel a cross-border shopper opens for. */
@@ -326,21 +375,17 @@ export async function getWishlistProductIds(): Promise<string[]> {
 
 /* ------------------------------------------------------- display helpers */
 
-export const ORDER_STATUS: Record<
-  OrderRow["status"],
-  { label: string; tone: "neutral" | "active" | "good" | "warn" }
-> = {
-  pending: { label: "Payment pending", tone: "warn" },
-  confirmed: { label: "Confirmed", tone: "active" },
-  "in-atelier": { label: "Being prepared", tone: "active" },
-  shipped: { label: "In transit", tone: "active" },
-  delivered: { label: "Delivered", tone: "good" },
-  cancelled: { label: "Cancelled", tone: "neutral" },
-  refunded: { label: "Refunded", tone: "neutral" },
-};
-
-export const SHIPPING_LABEL: Record<OrderRow["shipping_method"], string> = {
-  standard: "Standard delivery",
-  express: "Express",
-  "same-day": "Same-day courier",
-};
+/**
+ * Re-exported rather than defined here.
+ *
+ * They moved to `@/lib/order-status`, which imports nothing but types, when the
+ * account page grew a realtime listener: a Client Component cannot import from
+ * this module at all — it is `server-only` — and two copies of the same seven
+ * labels would drift the first time one of them was reworded.
+ */
+export {
+  ORDER_STATUS,
+  ORDER_STATUS_NEWS,
+  SHIPPING_LABEL,
+  type OrderTone,
+} from "@/lib/order-status";

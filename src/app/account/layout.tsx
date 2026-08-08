@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 
-import { getAccountProfile } from "@/lib/account";
+import { getAccountOrderStatuses, getAccountProfile } from "@/lib/account";
 import { formatDate } from "@/lib/utils";
 import { Breadcrumbs } from "@/components/catalog/catalog-page";
 import { AccountNav } from "@/components/account/account-nav";
+import { OrdersLive } from "@/components/account/orders-live";
 
 /**
  * The account shell.
@@ -26,8 +27,15 @@ export default async function AccountLayout({
   const profile = await getAccountProfile();
   if (!profile) redirect("/sign-in?expired=1&redirectTo=/account");
 
+  // Read after the guard, so a signed-out visitor is redirected rather than
+  // paying for a query that RLS would return nothing from anyway.
+  const orderStatuses = await getAccountOrderStatuses();
+
   return (
     <>
+      {/* One subscription for the whole account area — see the component. */}
+      <OrdersLive seed={orderStatuses} />
+
       <section className="border-b border-hairline bg-surface">
         <div className="container-shell py-10 lg:py-14">
           <Breadcrumbs

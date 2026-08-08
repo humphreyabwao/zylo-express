@@ -19,10 +19,13 @@ import { AdminThemeToggle } from "@/components/admin/theme-toggle";
 export function AdminTopbar({
   operator,
   notifications,
+  permitted,
   onOpenMobileNav,
 }: {
   operator: OperatorSummary;
   notifications: AdminNotification[];
+  /** Module segments this operator holds — the bell subscribes by them. */
+  permitted: string[];
   onOpenMobileNav: () => void;
 }) {
   const pathname = usePathname();
@@ -92,7 +95,10 @@ export function AdminTopbar({
 
       <div className="flex shrink-0 items-center gap-2">
         <AdminThemeToggle />
-        <AdminNotifications notifications={notifications} />
+        <AdminNotifications
+          notifications={notifications}
+          permitted={permitted}
+        />
         <span aria-hidden className="mx-1 h-6 w-px bg-admin-line" />
         <AdminProfileMenu operator={operator} />
       </div>

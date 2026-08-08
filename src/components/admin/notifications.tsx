@@ -33,8 +33,19 @@ const ICONS = {
 
 export function AdminNotifications({
   notifications,
+  permitted,
 }: {
   notifications: AdminNotification[];
+  /**
+   * Module segments this operator holds.
+   *
+   * The realtime route refuses a channel the caller has no module for, and a
+   * refused `EventSource` does not retry — it simply fails. Subscribing only to
+   * what this operator can open keeps the bell working for the channels they do
+   * hold, instead of opening three connections and losing whichever ones the
+   * server declines.
+   */
+  permitted: string[];
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -51,9 +62,18 @@ export function AdminNotifications({
    * out-of-stock variants. It previously listened on `inventory` alone, so a
    * new order or a new message never reached the tray until the operator
    * navigated — which is most of what the tray is for.
+   *
+   * `inventory` is public and needs no grant; the other two are staff channels
+   * scoped to their module. An operator without Orders gets no order events,
+   * which matches the tray they are shown — `getNotifications` reads through
+   * RLS as the same account.
    */
-  useRealtime("orders", scheduleRefresh);
-  useRealtime("messages", scheduleRefresh);
+  useRealtime("orders", scheduleRefresh, {
+    enabled: permitted.includes("orders"),
+  });
+  useRealtime("messages", scheduleRefresh, {
+    enabled: permitted.includes("messages"),
+  });
   useRealtime("inventory", scheduleRefresh);
 
   React.useEffect(
