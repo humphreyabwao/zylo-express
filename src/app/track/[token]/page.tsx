@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, SearchX } from "lucide-react";
 
 import { createAnonymousClient } from "@/lib/supabase/server";
 import { ORDER_STATUS } from "@/lib/order-status";
@@ -43,6 +42,56 @@ export const metadata: Metadata = {
   referrer: "no-referrer",
 };
 
+/**
+ * What an unrecognised link shows.
+ *
+ * Names the likely causes and gives two ways forward. It says nothing about
+ * whether the token was malformed, expired or simply wrong — see the note at
+ * the call site.
+ */
+function UnknownLink() {
+  return (
+    <main className="grid min-h-svh place-items-center bg-surface px-4 py-16">
+      <div className="w-full max-w-md text-center">
+        <div className="flex justify-center">
+          <Logo />
+        </div>
+
+        <div className="mt-8 border border-hairline bg-background px-6 py-12">
+          <SearchX
+            className="mx-auto size-7 text-champagne-dark"
+            strokeWidth={1}
+            aria-hidden="true"
+          />
+          <h1 className="mt-6 font-display text-2xl font-light">
+            We don&rsquo;t recognise this link
+          </h1>
+          <p className="mt-3 text-sm font-light leading-relaxed text-muted-foreground">
+            It may have been cut short when it was copied, or the order may no
+            longer exist. Try opening it straight from the email rather than
+            pasting it.
+          </p>
+
+          <div className="mt-8 flex flex-col items-center gap-3">
+            <Link
+              href="/account/tracking"
+              className="eyebrow-sm underline underline-offset-4 transition-opacity duration-500 hover:opacity-60"
+            >
+              Sign in to see your orders
+            </Link>
+            <Link
+              href="/help/contact"
+              className="text-xs font-light text-muted-foreground underline underline-offset-4 transition-opacity duration-500 hover:opacity-60"
+            >
+              Or get in touch
+            </Link>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
 async function readTracking(
   token: string
 ): Promise<PublicTrackingRpcResult | null> {
@@ -72,9 +121,26 @@ export default async function TrackPage({
   const { token } = await params;
   const tracking = await readTracking(token);
 
-  // A wrong token and a deleted order are the same answer on purpose. Telling
-  // the difference would turn this page into an oracle for guessing tokens.
-  if (!tracking) notFound();
+  /*
+   * Deliberately not `notFound()`.
+   *
+   * Two reasons, and the second is why this is not merely nicer.
+   *
+   * **It does not work here.** This route streams, so the shell — including
+   * `loading.tsx` — is flushed before this await resolves. `notFound()` arriving
+   * afterwards cannot change a status line that has already been sent: the
+   * response stays 200 and the visitor sits on "Loading". Verified against the
+   * deployment, not assumed.
+   *
+   * **A storefront 404 is the wrong answer anyway.** Everybody who lands here
+   * arrived from a link in their own email. "Page not found" tells them nothing
+   * about what to do; the usual causes are a truncated link, an order since
+   * deleted, or the wrong environment's host.
+   *
+   * A wrong token and a deleted order render identically on purpose — telling
+   * them apart would make this page an oracle for guessing tokens.
+   */
+  if (!tracking) return <UnknownLink />;
 
   const status = ORDER_STATUS[tracking.status];
 
